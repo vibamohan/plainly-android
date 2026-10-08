@@ -33,6 +33,30 @@ class DocumentAnalyzerTest {
         assertTrue(DocumentAnalyzer.analyze(listOf(TextEvidence("Your account is suspended; click here to confirm payment.", 1)))
             .findings.any { it.label == "Suspicious link or attachment direction" })
     }
+    @Test fun adjacentUrgentBenefitsInterruptionAndContactDirectionRaisesReviewSignal() {
+        val result = DocumentAnalyzer.analyze(listOf(
+            TextEvidence("Your CalFresh benefits will be suspended today.", 1),
+            TextEvidence("Click here to keep your account active.", 1)
+        ))
+        val finding = result.findings.single { it.label == "Urgent account or benefits interruption with contact direction" }
+        assertEquals(25, finding.weight)
+        assertEquals(2, finding.sourceSpanIds.size)
+        assertTrue(finding.evidence.contains("CalFresh"))
+    }
+    @Test fun adjacentUrgentCoverageInterruptionAndCredentialRequestRaisesReviewSignal() {
+        val result = DocumentAnalyzer.analyze(listOf(
+            TextEvidence("Your coverage may be terminated within 24 hours.", 1),
+            TextEvidence("Reply with your verification code to keep the case open.", 1)
+        ))
+        assertTrue(result.findings.any { it.label == "Urgent account or benefits interruption with sensitive request" })
+    }
+    @Test fun benefitsDatesAndRoutineAgencyContactDoNotTriggerRelationalWarning() {
+        val routine = DocumentAnalyzer.analyze(listOf(
+            TextEvidence("Your benefits renewal is due November 5, 2026.", 1),
+            TextEvidence("Contact the county office if you have questions.", 1)
+        ))
+        assertEquals(0, routine.score)
+    }
     @Test fun missingYearRollsForwardOnlyForDeadlineAndExplainsAssumption() {
         val result = DocumentAnalyzer.analyze(listOf(TextEvidence("Issued January 2. Return the form by January 9.", 1)), LocalDate.of(2026, 10, 19))
         assertEquals(LocalDate.of(2027, 1, 9), result.deadlines.single().date)
