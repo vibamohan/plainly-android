@@ -12,3 +12,6 @@ Translation uses ML Kit on-device models and may require an explicit first-use d
 
 ## Letter-domain safeguard (2026-10-19)
 The bundled email/SMS model predicts a warning for the three benign school examples in the final-week review. Its output therefore no longer creates or raises the user-facing warning level. It can add a zero-weight, explicitly experimental explanation only when deterministic rules already matched. The explanation lists up to five positive word/bigram log-likelihood contributions present in the input; these are statistical associations, not authenticity evidence. Regression tests load the actual bundled TSV. Historical benchmark numbers below/above describe the earlier model evaluation, not this gated product behavior or photographed-letter performance.
+
+## MobileBERT candidate (not integrated)
+`docs/MOBILEBERT_EXPERIMENT.md` describes a proposed comparison with a public 24.6M-parameter MobileBERT email-phishing checkpoint and a benefits-letter fine-tune. The checkpoint is not yet evaluated on Plainly's letter fixtures or consented held-out letter data, and its public model card does not report its training corpus or evaluation metrics. It is not bundled, converted to LiteRT, or used by the app. No performance advantage is currently claimed.
