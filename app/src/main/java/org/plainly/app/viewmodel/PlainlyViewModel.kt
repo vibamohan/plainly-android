@@ -25,6 +25,7 @@ import org.plainly.app.ml.WarningModelLoader
 
 data class PlainlyUiState(
     val busy: Boolean = false,
+    val pageProgress: Pair<Int, Int>? = null,
     val error: String? = null,
     val lines: List<TextEvidence> = emptyList(),
     val analysis: Analysis? = null,
@@ -55,7 +56,9 @@ class PlainlyViewModel(application: Application) : AndroidViewModel(application)
             )
             try {
                 val extracted = withContext(Dispatchers.IO) {
-                    OnDeviceDocumentIngestion.extract(getApplication(), uri, _state.value.ocrLanguage)
+                    OnDeviceDocumentIngestion.extract(getApplication(), uri, _state.value.ocrLanguage) { page, total ->
+                        _state.value = _state.value.copy(pageProgress = page to total)
+                    }
                 }
                 if (extracted.none { it.text.isNotBlank() }) {
                     throw IllegalArgumentException(
@@ -75,7 +78,7 @@ class PlainlyViewModel(application: Application) : AndroidViewModel(application)
                 _state.value = _state.value.copy(error = e.message ?: "Could not process document")
             } finally {
                 temporaryFiles.forEach { it.delete() }
-                _state.value = _state.value.copy(busy = false)
+                _state.value = _state.value.copy(busy = false, pageProgress = null)
             }
         }
     }
@@ -96,7 +99,7 @@ class PlainlyViewModel(application: Application) : AndroidViewModel(application)
                 _state.value = _state.value.copy(translated = result, translatedLanguage = targetLanguage, translationStatus = "Translation complete")
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "Translation unavailable: ${e.message}", translationStatus = null)
-            } finally { _state.value = _state.value.copy(busy = false) }
+            } finally { _state.value = _state.value.copy(busy = false, pageProgress = null) }
         }
     }
 
@@ -111,7 +114,7 @@ class PlainlyViewModel(application: Application) : AndroidViewModel(application)
                 _state.value = _state.value.copy(translatedOriginal = result, originalTranslationLanguage = targetLanguage, translationStatus = "Translation complete")
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "Original-text translation unavailable: ${e.message}", translationStatus = null)
-            } finally { _state.value = _state.value.copy(busy = false) }
+            } finally { _state.value = _state.value.copy(busy = false, pageProgress = null) }
         }
     }
 

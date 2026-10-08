@@ -65,7 +65,7 @@ private fun analysisExportText(result: Analysis): String = buildString {
     appendLine("Response deadlines")
     if (result.deadlines.isEmpty()) appendLine("- None identified")
     result.deadlines.forEach {
-        appendLine("- ${it.date}${if (it.needsReview) " (review required)" else ""}${if (it.isCalculatedFromReferenceDate) " (calculated from analysis date)" else ""}: ${it.evidence}")
+        appendLine("- ${it.date}${if (it.needsReview) " (review required)" else ""}${if (it.isCalculatedFromReferenceDate) " (calculated from analysis date)" else ""}: ${it.evidence} ${it.reviewReason.orEmpty()}")
     }
     appendLine()
     appendLine("Warning signals (heuristic; review original)")
@@ -74,6 +74,9 @@ private fun analysisExportText(result: Analysis): String = buildString {
         appendLine("- ${finding.label}: ${finding.evidence}")
         appendLine("  Source spans: ${finding.sourceSpanIds.joinToString()}")
     }
+    appendLine()
+    appendLine("Official contacts (directory matches do not verify the sender)")
+    result.officialContacts.forEach { appendLine("- ${it.contact.name}: ${it.contact.phone} · ${it.contact.website} (directory checked ${it.contact.checkedOn})") }
     appendLine()
     appendLine("Important: Check the original document. Plainly does not verify authenticity or provide a fraud probability.")
 }
@@ -146,6 +149,19 @@ internal fun PlainlyApp(context: Context) {
         lastSpeech = ""
         speechOffset = 0
         speechBase = 0
+    }
+
+    val pdfExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { destination ->
+        val result = uiState.analysis
+        if (destination != null && result != null) scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(destination)?.use {
+                        org.plainly.app.export.AnalysisPdfWriter.write(analysisExportText(result), it)
+                    } ?: error("Could not open export destination")
+                }
+            } catch (e: Exception) { plainlyViewModel.setError(e.message ?: "Could not export PDF") }
+        }
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -256,6 +272,7 @@ internal fun PlainlyApp(context: Context) {
             )
         }
         if (uiState.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        uiState.pageProgress?.let { Text(context.getString(R.string.page_progress, it.first, it.second)) }
         uiState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         pendingCameraPath?.let {
             Card {
@@ -347,14 +364,9 @@ internal fun PlainlyApp(context: Context) {
             OutlinedButton(onClick = plainlyViewModel::clearCurrentDocument, enabled = !uiState.busy) {
                 Text(context.getString(R.string.remove_document))
             }
-            OutlinedButton(onClick = {
-                val share = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_SUBJECT, "Plainly analysis")
-                    putExtra(Intent.EXTRA_TEXT, analysisExportText(result))
-                }
-                context.startActivity(Intent.createChooser(share, context.getString(R.string.export_analysis)))
-            }) { Text(context.getString(R.string.export_analysis)) }
+            OutlinedButton(onClick = { pdfExport.launch("Plainly-analysis.pdf") }, enabled = !uiState.busy) {
+                Text(context.getString(R.string.export_analysis))
+            }
             uiState.languageTag?.let { Text(context.getString(R.string.detected_language, it)) }
             uiState.languageWarning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             FraudWhyCard(result.riskLevel, result.findings)

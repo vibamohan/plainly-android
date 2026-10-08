@@ -88,4 +88,5 @@
     <string name="no_phone">No hay una aplicación de teléfono disponible</string>
     <string name="no_calendar">No hay una aplicación de calendario disponible</string>
     <string name="confirm_date_body">Fecha detectada: %1$s. Revisa el original y las suposiciones indicadas antes de añadirla al calendario.\n\n%2$s\n%3$s</string>
+    <string name="page_progress">Leyendo página %1$d de %2$d</string>
 </resources>

@@ -19,7 +19,7 @@ enum class OcrLanguage(val label: String) {
 
 /** Uses bundled Latin-script OCR; language choices currently share the tested Latin model. */
 object OcrEngine {
-    suspend fun extract(context: Context, uri: Uri, language: OcrLanguage = OcrLanguage.ENGLISH): List<TextEvidence> {
+    suspend fun extract(context: Context, uri: Uri, language: OcrLanguage = OcrLanguage.ENGLISH, onProgress: (Int, Int) -> Unit = { _, _ -> }): List<TextEvidence> {
         val mime = context.contentResolver.getType(uri).orEmpty()
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         try {
@@ -28,8 +28,10 @@ object OcrEngine {
                 val descriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: error("Cannot open PDF")
                 descriptor.use { fd ->
                     PdfRenderer(fd).use { renderer ->
+                        require(renderer.pageCount <= 20) { "PDF has ${renderer.pageCount} pages. Choose a document of 20 pages or fewer; no pages were analyzed." }
                         // Render one page at a time so memory stays bounded without silently dropping pages.
                         for (pageIndex in 0 until renderer.pageCount) {
+                            onProgress(pageIndex + 1, renderer.pageCount)
                             renderer.openPage(pageIndex).use { page ->
                                 val scale = minOf(2f, 2200f / maxOf(page.width, page.height))
                                 val bitmap = Bitmap.createBitmap((page.width * scale).toInt().coerceAtLeast(1), (page.height * scale).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
