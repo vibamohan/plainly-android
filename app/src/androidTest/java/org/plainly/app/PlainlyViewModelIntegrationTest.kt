@@ -39,6 +39,12 @@ class PlainlyViewModelIntegrationTest {
             assertNull(state.error)
             assertNotNull(state.analysis)
             assertNotNull(state.analysis?.deadlines?.singleOrNull())
+            val dao = org.plainly.app.history.PlainlyDatabase.get(application).historyDao()
+            val saved = kotlinx.coroutines.withTimeout(10000) {
+                dao.observeAll().first { rows -> rows.any { it.sourceUri == uri.toString() } }
+            }.first { it.sourceUri == uri.toString() }
+            org.junit.Assert.assertEquals(source.name, saved.displayName)
+            dao.delete(saved.id)
         } finally {
             source.delete()
             viewModel.clearCurrentDocument()

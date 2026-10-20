@@ -305,8 +305,13 @@ fun confidenceLabel(importance: Double) = when {
 
 val supportedLanguages = listOf(
     TranslateLanguage.ENGLISH to "English",
-    TranslateLanguage.SPANISH to "Spanish", TranslateLanguage.FRENCH to "French",
-    TranslateLanguage.GERMAN to "German", TranslateLanguage.PORTUGUESE to "Portuguese"
+    TranslateLanguage.SPANISH to "Español", TranslateLanguage.FRENCH to "Français",
+    TranslateLanguage.GERMAN to "Deutsch", TranslateLanguage.PORTUGUESE to "Português",
+    TranslateLanguage.CHINESE to "中文", TranslateLanguage.HINDI to "हिन्दी",
+    TranslateLanguage.TAMIL to "தமிழ்", TranslateLanguage.TELUGU to "తెలుగు",
+    TranslateLanguage.KANNADA to "ಕನ್ನಡ", TranslateLanguage.VIETNAMESE to "Tiếng Việt",
+    TranslateLanguage.KOREAN to "한국어", TranslateLanguage.RUSSIAN to "Русский",
+    TranslateLanguage.TAGALOG to "Tagalog"
 )
 
 fun languageLabel(code: String): String = supportedLanguages.firstOrNull { it.first == code }?.second ?: code

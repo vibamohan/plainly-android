@@ -115,24 +115,33 @@ internal fun PlainlyApp(context: Context) {
     var speaking by remember { mutableStateOf(false) }
     var speechPaused by remember { mutableStateOf(false) }
     var speechOffset by remember { mutableIntStateOf(0) }
+    var speechBase by remember { mutableIntStateOf(0) }
+    var speechError by remember { mutableStateOf<String?>(null) }
     var lastSpeech by remember { mutableStateOf("") }
-    var targetLanguage by remember { mutableStateOf(TranslateLanguage.SPANISH) }
+    var targetLanguage by rememberSaveable { mutableStateOf(TranslateLanguage.SPANISH) }
     var languageMenu by remember { mutableStateOf(false) }
     var showDetails by remember { mutableStateOf(false) }
-    var ocrLanguageMenu by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(false) }
     var showClearHistory by remember { mutableStateOf(false) }
     var calendarConfirmation by remember { mutableStateOf<Deadline?>(null) }
     val tts = remember { TextToSpeech(context) { status -> speechReady = status == TextToSpeech.SUCCESS } }
     DisposableEffect(tts) {
-        tts.language = Locale.US
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) { }
             override fun onDone(utteranceId: String?) { speaking = false }
             override fun onError(utteranceId: String?) { speaking = false }
-            override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) { speechOffset = start }
+            override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) { speechOffset = speechBase + start }
         })
         onDispose { tts.stop(); tts.shutdown() }
+    }
+
+    LaunchedEffect(uiState.analysis, uiState.translatedLanguage, uiState.translated) {
+        tts.stop()
+        speaking = false
+        speechPaused = false
+        lastSpeech = ""
+        speechOffset = 0
+        speechBase = 0
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -222,20 +231,7 @@ internal fun PlainlyApp(context: Context) {
             StatusChip("On-device analysis")
             StatusChip("No cloud document analysis")
         }
-        Box {
-            OutlinedButton(onClick = { ocrLanguageMenu = true }, enabled = !uiState.busy) {
-                Text("OCR language: ${uiState.ocrLanguage.label}")
-            }
-            DropdownMenu(expanded = ocrLanguageMenu, onDismissRequest = { ocrLanguageMenu = false }) {
-                OcrLanguage.entries.forEach { language ->
-                    DropdownMenuItem(
-                        text = { Text(language.label) },
-                        onClick = { plainlyViewModel.setOcrLanguage(language); ocrLanguageMenu = false }
-                    )
-                }
-            }
-        }
-        Text("OCR uses the bundled Latin-script model. Review every result against the original document.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Letters in English are supported today. Translation languages are separate from scanning support.", style = MaterialTheme.typography.bodySmall)
         if (showInfo) {
             AlertDialog(
                 onDismissRequest = { showInfo = false },
@@ -393,28 +389,44 @@ internal fun PlainlyApp(context: Context) {
                 }
             }
             uiState.translationStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            uiState.translated?.let { EvidenceCard("${languageLabel(targetLanguage)} summary", it) }
+            Text("Translation models download on first use. Check names, amounts, and dates against the original.", style = MaterialTheme.typography.bodySmall)
+            uiState.translated?.let { EvidenceCard("${languageLabel(uiState.translatedLanguage ?: targetLanguage)} summary", it) }
+            OutlinedButton(onClick = { plainlyViewModel.translateOriginal(targetLanguage) }, enabled = !uiState.busy) { Text("Translate full letter") }
+            uiState.translatedOriginal?.let {
+                TranslationComparison(uiState.lines.joinToString("\n") { line -> "[Page ${line.page}] ${line.text}" }, it,
+                    languageLabel(uiState.originalTranslationLanguage ?: targetLanguage))
+            }
             OutlinedButton(onClick = { showDetails = !showDetails }) {
                 Text(if (showDetails) "Hide source & details" else "Review source & details")
             }
-            if (showDetails) {
-                ReviewWarning()
-                SpeechControls(
-                    enabled = speechReady,
+            speechError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            SpeechControls(
+                    enabled = speechReady && !uiState.busy,
                     speaking = speaking,
                     paused = speechPaused,
                     onSpeak = {
-                        val text = result.decisionSummary?.let { it.whatItIs + " " + it.nextSteps.joinToString(" ") } ?: result.summary
-                        lastSpeech = text
-                        speechOffset = 0
-                        speechPaused = false
-                        speaking = true
-                        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "plainly-summary")
+                        val language = uiState.translatedLanguage ?: TranslateLanguage.ENGLISH
+                        val locale = Locale.forLanguageTag(if (language == "tl") "fil" else language)
+                        val voice = tts.voices?.firstOrNull { !it.isNetworkConnectionRequired && (it.locale.language == locale.language || it.locale.language == language) }
+                        if (voice == null) {
+                            speechError = "No offline voice installed for ${languageLabel(language)}. Install a voice in Android text-to-speech settings."
+                        } else {
+                            tts.voice = voice
+                            speechError = null
+                            val text = uiState.translated ?: result.summary
+                            lastSpeech = text
+                            speechOffset = 0
+                            speechBase = 0
+                            speechPaused = false
+                            speaking = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "plainly-summary") == TextToSpeech.SUCCESS
+                            if (!speaking) speechError = "Could not start speech. Check Android text-to-speech settings."
+                        }
                     },
                     onPause = { tts.stop(); speaking = false; speechPaused = true },
                     onResume = {
                         if (lastSpeech.isNotBlank()) {
-                            val remaining = lastSpeech.substring(speechOffset.coerceIn(0, lastSpeech.length))
+                            speechBase = speechOffset.coerceIn(0, lastSpeech.length)
+                            val remaining = lastSpeech.substring(speechBase)
                             speechPaused = false
                             speaking = true
                             tts.speak(remaining, TextToSpeech.QUEUE_FLUSH, null, "plainly-resume")
@@ -423,12 +435,15 @@ internal fun PlainlyApp(context: Context) {
                     onReplay = {
                         if (lastSpeech.isNotBlank()) {
                             speechOffset = 0
+                            speechBase = 0
                             speechPaused = false
                             speaking = true
                             tts.speak(lastSpeech, TextToSpeech.QUEUE_FLUSH, null, "plainly-replay")
                         }
                     }
                 )
+            if (showDetails) {
+                ReviewWarning()
                 ResultSection("Actions and deadlines") {
                     result.actions.take(3).forEach { ActionCard(it) }
                     result.deadlines.forEach { deadline -> DeadlineCard(deadline) { calendarConfirmation = it } }
