@@ -47,7 +47,16 @@ fun PlainlyTheme(content: @Composable () -> Unit) {
         darkColorScheme(
             primary = Color(0xFFBDB5FF),
             secondary = Color(0xFF9DDBD1),
-            tertiary = Color(0xFFFFB59F)
+            tertiary = Color(0xFFFFB59F),
+            onPrimary = Color(0xFF2D2368),
+            primaryContainer = Color(0xFF443A82), onPrimaryContainer = Color(0xFFEAE7FF),
+            onSecondary = Color(0xFF003732),
+            secondaryContainer = Color(0xFF20504A), onSecondaryContainer = Color(0xFFDDF4EF),
+            onTertiary = Color(0xFF542414),
+            tertiaryContainer = Color(0xFF713A28), onTertiaryContainer = Color(0xFFFFE5DD),
+            background = Color(0xFF141218), onBackground = Color(0xFFE7E0EA),
+            surface = Color(0xFF141218), onSurface = Color(0xFFE7E0EA),
+            surfaceVariant = Color(0xFF49454F), onSurfaceVariant = Color(0xFFCAC4D0)
         )
     } else {
         lightColorScheme(
@@ -74,7 +83,7 @@ fun PlainlyTheme(content: @Composable () -> Unit) {
             large = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
             extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(30.dp)
         ),
-        content = content
+        content = { Surface(color = colors.background, content = content) }
     )
 }
 

@@ -1,8 +1,6 @@
 package org.plainly.app
 
 import android.content.Context
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -21,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -101,12 +100,14 @@ internal fun PlainlyApp(context: Context) {
     val scope = rememberCoroutineScope()
     val plainlyViewModel: PlainlyViewModel = viewModel()
     val uiState by plainlyViewModel.state.collectAsState()
-    var cameraUri by remember { mutableStateOf<Uri?>(null) }
-    var cameraFile by remember { mutableStateOf<File?>(null) }
-    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
-    var pendingCameraFile by remember { mutableStateOf<File?>(null) }
-    var cameraRotation by remember { mutableIntStateOf(0) }
-    var cameraCropPercent by remember { mutableIntStateOf(3) }
+    var cameraPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingCameraPath by rememberSaveable { mutableStateOf<String?>(null) }
+    val cameraFile = cameraPath?.let(::File)
+    val cameraUri = cameraFile?.let { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", it) }
+    val pendingCameraFile = pendingCameraPath?.let(::File)
+    var cameraRotation by rememberSaveable { mutableIntStateOf(0) }
+    var cameraCropPercent by rememberSaveable { mutableIntStateOf(3) }
+    var preparingPhoto by remember { mutableStateOf(false) }
     val historyDao = remember { PlainlyDatabase.get(context).historyDao() }
     var history by remember { mutableStateOf<List<HistoryEntry>>(emptyList()) }
     LaunchedEffect(Unit) { historyDao.observeAll().collect { history = it } }
@@ -148,36 +149,34 @@ internal fun PlainlyApp(context: Context) {
     }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
         if (saved) {
-            pendingCameraUri = cameraUri
-            pendingCameraFile = cameraFile
+            pendingCameraPath = cameraPath
         } else {
             cameraFile?.delete()
-            cameraUri = null
-            cameraFile = null
+            cameraPath = null
         }
     }
     fun capture() {
         cameraRotation = 0
         val file = File(context.cacheDir, "camera-${System.currentTimeMillis()}.jpg")
-        cameraFile = file
-        cameraUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        cameraUri?.let(camera::launch)
+        cameraPath = file.absolutePath
+        camera.launch(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file))
     }
     fun useCapturedPhoto() {
         val source = pendingCameraFile ?: return
+        if (preparingPhoto) return
+        preparingPhoto = true
         scope.launch {
             plainlyViewModel.clearError()
             try {
                 val normalized = withContext(Dispatchers.IO) {
                     CameraImageProcessor.normalize(context, source, cameraRotation, cameraCropPercent)
                 }
-                pendingCameraUri = null
-                pendingCameraFile = null
+                pendingCameraPath = null
+                cameraPath = null
                 plainlyViewModel.process(Uri.fromFile(normalized), listOf(source, normalized))
             } catch (e: Exception) {
-                source.delete()
                 plainlyViewModel.setError(e.message ?: "Could not prepare camera image")
-            }
+            } finally { preparingPhoto = false }
         }
     }
     fun releaseHistoryGrant(entry: HistoryEntry) {
@@ -192,15 +191,7 @@ internal fun PlainlyApp(context: Context) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(
-                Brush.linearGradient(
-                    listOf(
-                        Color(0xFFF8F5FF),
-                        Color(0xFFF2F7FF),
-                        Color(0xFFFFFBF6)
-                    )
-                )
-            )
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -257,25 +248,20 @@ internal fun PlainlyApp(context: Context) {
         }
         if (uiState.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         uiState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        pendingCameraUri?.let {
+        pendingCameraPath?.let {
             Card {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Camera photo ready. Check the image before OCR.", style = MaterialTheme.typography.titleMedium)
                     pendingCameraFile?.let { file ->
-                        val preview = remember(file, cameraRotation, cameraCropPercent) {
-                            BitmapFactory.decodeFile(file.absolutePath)?.let { decoded ->
-                                val rotated = if (cameraRotation == 0) decoded else android.graphics.Bitmap.createBitmap(
-                                    decoded, 0, 0, decoded.width, decoded.height,
-                                    Matrix().apply { postRotate(cameraRotation.toFloat()) }, true
-                                ).also { decoded.recycle() }
-                                val marginX = (rotated.width * (cameraCropPercent / 100f)).toInt().coerceAtMost(rotated.width / 4)
-                                val marginY = (rotated.height * (cameraCropPercent / 100f)).toInt().coerceAtMost(rotated.height / 4)
-                                if (marginX == 0 && marginY == 0) rotated.asImageBitmap()
-                                else android.graphics.Bitmap.createBitmap(
-                                    rotated, marginX, marginY,
-                                    (rotated.width - marginX * 2).coerceAtLeast(1),
-                                    (rotated.height - marginY * 2).coerceAtLeast(1)
-                                ).also { if (it !== rotated) rotated.recycle() }.asImageBitmap()
+                        val preview by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, file.absolutePath, cameraRotation, cameraCropPercent) {
+                            value = null
+                            try {
+                                value = withContext(Dispatchers.Default) {
+                                    CameraImageProcessor.preview(file, cameraRotation, cameraCropPercent).asImageBitmap()
+                                }
+                            } catch (e: Exception) {
+                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                plainlyViewModel.setError(e.message ?: "Could not load preview")
                             }
                         }
                         preview?.let { Image(it, contentDescription = "Captured document preview", modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth) }
@@ -292,15 +278,14 @@ internal fun PlainlyApp(context: Context) {
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = ::useCapturedPhoto, enabled = !uiState.busy) { Text("Use photo") }
+                        Button(onClick = ::useCapturedPhoto, enabled = !uiState.busy && !preparingPhoto) { Text("Use photo") }
                         OutlinedButton(onClick = {
                             pendingCameraFile?.delete()
-                            pendingCameraUri = null
-                            pendingCameraFile = null
+                            pendingCameraPath = null
                             cameraRotation = 0
                             cameraCropPercent = 3
                             capture()
-                        }, enabled = !uiState.busy) { Text("Retake") }
+                        }, enabled = !uiState.busy && !preparingPhoto) { Text("Retake") }
                     }
                 }
             }

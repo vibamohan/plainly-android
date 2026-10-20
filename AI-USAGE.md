@@ -194,3 +194,6 @@ An AI assistant updated the pure Kotlin analyzer to synthesize appointment detai
 ## Visual polish milestone — 2026-10-18
 
 An AI assistant updated the Android Compose presentation with a cohesive color system, branded header, rounded surfaces, clearer summary hierarchy, and more prominent but evidence-preserving risk cards. The existing privacy, uncertainty, and on-device language was preserved. Tests, lint, and the debug build passed.
+
+## Camera and theme reliability — 2026-10-19
+Codex implemented the review-requested shared sampled camera decoder (including mirrored EXIF orientations), background preview generation, saveable camera paths/rotation/crop, and theme-based backgrounds with explicit dark colors. This is AI-authored work, not student-authored work. `testDebugUnitTest`, `assembleDebug`, `lintDebug`, and all 10 connected instrumentation tests passed on the API 37 emulator, including new EXIF/dimension and large-image checks. Physical phone capture, process death during the external camera, and visual contrast review remain manual checks. Lint completed with existing advisory warnings.
