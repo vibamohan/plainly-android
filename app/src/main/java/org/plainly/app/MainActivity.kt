@@ -350,6 +350,34 @@ internal fun PlainlyApp(context: Context) {
             uiState.languageWarning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             FraudWhyCard(result.riskLevel, result.findings)
             result.decisionSummary?.let { DecisionSummaryCard(it) }
+            if (result.officialContacts.isNotEmpty()) {
+                ResultSection("Official contacts") {
+                    Text("Bundled directory matches a name in the letter. This does not verify its sender. Confirm that this agency serves you.")
+                    result.officialContacts.forEach { match ->
+                        Card {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(match.contact.name, style = MaterialTheme.typography.titleMedium)
+                                Text(match.contact.purpose)
+                                Text(match.contact.phone)
+                                Text("Directory checked ${match.contact.checkedOn}", style = MaterialTheme.typography.bodySmall)
+                                OutlinedButton(onClick = {
+                                    runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${match.contact.phone}"))) }
+                                        .onFailure { plainlyViewModel.setError("No phone app is available") }
+                                }) { Text("Open agency number in dialer") }
+                                OutlinedButton(onClick = {
+                                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(match.contact.website))) }
+                                        .onFailure { plainlyViewModel.setError("No browser is available") }
+                                }) { Text("Open official website") }
+                                OutlinedButton(onClick = {
+                                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(match.contact.sourceUrl))) }
+                                        .onFailure { plainlyViewModel.setError("No browser is available") }
+                                }) { Text("Check directory source") }
+                                EvidenceCard("Agency-name match", "Page ${match.page}: ${match.evidence}")
+                            }
+                        }
+                    }
+                }
+            }
             Box {
                 OutlinedButton(onClick = { languageMenu = true }, enabled = !uiState.busy) {
                     Text("Change language · ${languageLabel(targetLanguage)}")
