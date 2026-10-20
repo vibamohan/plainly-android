@@ -9,3 +9,6 @@ The learned model contributes one source-linked review signal when its binary cl
 Action importance labels are review-priority hints based partly on extracted layout. They are not OCR confidence scores or factual certainty.
 
 Translation uses ML Kit on-device models and may require an explicit first-use download. Supported target choices exposed by the current UI are English, Spanish, French, German, and Portuguese; translation quality and offline behavior require real-device evaluation.
+
+## Letter-domain safeguard (2026-10-19)
+The bundled email/SMS model predicts a warning for the three benign school examples in the final-week review. Its output therefore no longer creates or raises the user-facing warning level. It can add a zero-weight, explicitly experimental explanation only when deterministic rules already matched. The explanation lists up to five positive word/bigram log-likelihood contributions present in the input; these are statistical associations, not authenticity evidence. Regression tests load the actual bundled TSV. Historical benchmark numbers below/above describe the earlier model evaluation, not this gated product behavior or photographed-letter performance.

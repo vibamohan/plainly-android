@@ -24,6 +24,17 @@ class LearnedWarningModel private constructor(
         return positive > negative
     }
 
+    /** Positive log-likelihood contributions, not confidence or causal explanations. */
+    fun topWarningPhrases(text: String, limit: Int = 5): List<String> = features(text)
+        .groupingBy { it }.eachCount().map { (feature, count) ->
+            val contribution = count * (
+                ln((positiveCounts[feature].orZero() + alpha) / (positiveTotal + alpha * vocabularySize)) -
+                ln((negativeCounts[feature].orZero() + alpha) / (negativeTotal + alpha * vocabularySize)))
+            feature to contribution
+        }.filter { it.second > 0 && it.first in positiveCounts }
+        .sortedByDescending { it.second }.take(limit.coerceIn(0, 10))
+        .map { it.first.removePrefix("__bigram__").replace('_', ' ') }
+
     private fun logPrior(documents: Int, otherDocuments: Int): Double =
         ln(documents.toDouble() / (documents + otherDocuments))
 
