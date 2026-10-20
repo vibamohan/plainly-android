@@ -207,29 +207,6 @@ fun FraudWhyCard(level: RiskLevel, findings: List<org.plainly.app.analysis.Findi
 }
 
 @Composable
-fun RiskBanner(level: RiskLevel, score: Int) {
-    val (title, color) = when (level) {
-        RiskLevel.HIGH -> "Several caution signals found" to MaterialTheme.colorScheme.errorContainer
-        RiskLevel.UNCERTAIN -> "Review before acting" to MaterialTheme.colorScheme.tertiaryContainer
-        RiskLevel.NO_CLEAR_INDICATORS -> "No clear caution signals found" to MaterialTheme.colorScheme.secondaryContainer
-    }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = color),
-        shape = MaterialTheme.shapes.large,
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text(if (level == RiskLevel.NO_CLEAR_INDICATORS) "✓" else "!", style = MaterialTheme.typography.titleMedium)
-                Text(title, style = MaterialTheme.typography.titleMedium)
-            }
-            Text("Heuristic review level: ${level.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }} · signal total $score/100")
-            Text("This is not a fraud probability, authenticity check, or safety guarantee.", style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
 fun ResultSection(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)

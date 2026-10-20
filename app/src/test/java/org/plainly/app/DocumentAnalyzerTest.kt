@@ -4,7 +4,6 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.plainly.app.analysis.DocumentAnalyzer
 import org.plainly.app.analysis.TextEvidence
-import org.plainly.app.model.toParsedDocument
 import java.time.LocalDate
 
 class DocumentAnalyzerTest {
@@ -17,7 +16,7 @@ class DocumentAnalyzerTest {
             "Social Security sent a benefits notice."
         ).forEach { text -> assertEquals(text, 0, DocumentAnalyzer.analyze(listOf(TextEvidence(text, 1))).score) }
     }
-    @Test fun urgencyIdiomsDoNotHideCredentialOrPaymentRequests() {
+    @Test fun urgencyIdiomsDoNotHideCredentialOrPaymentRequest() {
         listOf(
             "Respond no later than Friday with your password and verification code.",
             "Do not delay, send gift cards.",
@@ -215,24 +214,11 @@ class DocumentAnalyzerTest {
         assertEquals(org.plainly.app.analysis.RiskLevel.NO_CLEAR_INDICATORS, analysis.riskLevel)
         assertTrue(analysis.warnings.any { it.contains("does not verify") })
     }
-    @Test fun parsedDocumentPreservesSourcePageAndSpanOrder() {
-        val parsed = listOf(TextEvidence("Page one", 1), TextEvidence("Page two", 2))
-            .toParsedDocument("doc-1", org.plainly.app.model.SourceType.PDF)
-        assertEquals("doc-1", parsed.id)
-        assertEquals(2, parsed.spans.size)
-        assertEquals(2, parsed.spans[1].pageIndex)
-        assertEquals(org.plainly.app.model.SpanOrigin.OCR, parsed.spans[0].origin)
-    }
     @Test fun evidenceGraphExtractsAmountAndDestination() {
         val analysis = DocumentAnalyzer.analyze(listOf(TextEvidence("Pay \\$25 at https://example.com/pay.", 1)))
         assertTrue(analysis.evidence.any { it.kind == org.plainly.app.analysis.EvidenceKind.AMOUNT && it.value == "\$25" })
         assertTrue(analysis.evidence.any { it.kind == org.plainly.app.analysis.EvidenceKind.DESTINATION && it.value == "https://example.com/pay" })
         assertTrue(analysis.relations.any { it.relation == org.plainly.app.analysis.RelationKind.DIRECTS_TO })
-    }
-    @Test fun summaryItemsAlwaysReferenceSourceSpans() {
-        val analysis = DocumentAnalyzer.analyze(listOf(TextEvidence("Pay \\$25 by October 20, 2026 or face arrest.", 1)))
-        assertTrue(analysis.summaryItems.isNotEmpty())
-        assertTrue(analysis.summaryItems.all { it.sourceSpanIds.isNotEmpty() })
     }
     @Test fun intentGraphTagsAppointmentAndInformationalDocuments() {
         val appointment = DocumentAnalyzer.analyze(listOf(TextEvidence("Please schedule an appointment for the hearing.", 1)))

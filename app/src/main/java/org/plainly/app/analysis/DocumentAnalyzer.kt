@@ -30,7 +30,6 @@ enum class Provenance { EXTRACTED, RULE_INFERRED, MODEL_INFERRED }
 enum class RelationKind { CLAIMS_AUTHORITY, REQUESTS, CONDITIONAL_ON, THREATENS, DIRECTS_TO, DUE_BY }
 data class GraphEvidence(val id: String, val kind: EvidenceKind, val sourceSpanIds: List<String>, val value: String, val confidence: Float? = null, val provenance: Provenance = Provenance.RULE_INFERRED)
 data class EvidenceRelation(val fromEvidenceId: String, val toEvidenceId: String, val relation: RelationKind, val sourceSpanIds: List<String>, val provenance: Provenance = Provenance.RULE_INFERRED)
-data class SummaryItem(val text: String, val sourceSpanIds: List<String>)
 data class DecisionSummary(
     val whatItIs: String,
     val nextSteps: List<String>,
@@ -44,7 +43,7 @@ data class DecisionSummary(
 data class Analysis(
     val actions: List<ActionItem>, val deadlines: List<Deadline>, val findings: List<Finding>, val score: Int, val summary: String,
     val intents: Set<IntentKind> = emptySet(), val evidence: List<GraphEvidence> = emptyList(), val relations: List<EvidenceRelation> = emptyList(),
-    val riskLevel: RiskLevel = RiskLevel.NO_CLEAR_INDICATORS, val warnings: List<String> = emptyList(), val summaryItems: List<SummaryItem> = emptyList(),
+    val riskLevel: RiskLevel = RiskLevel.NO_CLEAR_INDICATORS, val warnings: List<String> = emptyList(),
     val issueDates: List<IssueDate> = emptyList(),
     val decisionSummary: DecisionSummary? = null,
     val officialContacts: List<ContactMatch> = emptyList()
@@ -166,14 +165,16 @@ object DocumentAnalyzer {
                 )
             }
         }
-        if (learnedWarningModel != null) {
+        // The email/SMS model is unvalidated on letters. It supplements rule evidence only.
+        if (learnedWarningModel != null && findings.isNotEmpty()) {
             val fullText = lines.joinToString(" ") { it.text }
-            if (learnedWarningModel.predictsWarning(fullText)) {
+            val phrases = learnedWarningModel.topWarningPhrases(fullText)
+            if (learnedWarningModel.predictsWarning(fullText) && phrases.isNotEmpty()) {
                 findings += Finding(
-                    "Learned text signal; review the source",
-                    lines.joinToString(" ") { "Page ${it.page}: ${it.text.trim()}" },
-                    15,
-                    lines.mapIndexed { index, item -> "span-${item.page}-model-$index" }
+                    "Experimental learned text signal",
+                    "Contributing words/phrases: ${phrases.joinToString(", ")}. Statistical associations, not proof of fraud.",
+                    0,
+                    findings.flatMap { it.sourceSpanIds }.distinct()
                 )
             }
         }
@@ -194,14 +195,9 @@ object DocumentAnalyzer {
         val warnings = if (riskLevel == RiskLevel.NO_CLEAR_INDICATORS) {
             listOf("No clear indicators does not verify that this document is legitimate.")
         } else emptyList()
-        val summaryItems = graph.evidence
-            .filter { it.kind in setOf(EvidenceKind.REQUEST, EvidenceKind.DATE, EvidenceKind.CONSEQUENCE, EvidenceKind.AMOUNT) }
-            .distinctBy { it.value to it.sourceSpanIds }
-            .take(4)
-            .map { SummaryItem(it.value, it.sourceSpanIds) }
         val decisionSummary = buildDecisionSummary(sorted, deadlines, issueDates, unique, riskLevel, graph.intents, warnings, graph.evidence.filter { it.kind == EvidenceKind.AMOUNT }.map { it.value })
         val summary = decisionSummary.toCompactText().ifBlank { fallbackSummary }
-        return Analysis(sorted, deadlines.distinctBy { it.date to it.evidence }, unique, score, summary, graph.intents, graph.evidence, graph.relations, riskLevel, warnings, summaryItems, issueDates.distinctBy { it.date to it.evidence }, decisionSummary, OfficialContacts.match(lines))
+        return Analysis(sorted, deadlines.distinctBy { it.date to it.evidence }, unique, score, summary, graph.intents, graph.evidence, graph.relations, riskLevel, warnings, issueDates.distinctBy { it.date to it.evidence }, decisionSummary, OfficialContacts.match(lines))
     }
 
     private fun buildDecisionSummary(
