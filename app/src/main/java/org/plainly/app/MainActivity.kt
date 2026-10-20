@@ -422,7 +422,7 @@ internal fun PlainlyApp(context: Context) {
                 onDismissRequest = { calendarConfirmation = null },
                 title = { Text("Confirm this date") },
                 text = {
-                    Text("Plainly detected ${deadline.date}${if (deadline.isCalculatedFromReferenceDate) " as a calculation from the analysis date" else ""}${if (deadline.needsReview) " and marked it for review" else ""}. Check the original document before adding it to your calendar.\n\n${deadline.evidence}")
+                    Text("Plainly detected ${deadline.date}${if (deadline.isCalculatedFromReferenceDate) " as a calculation from the analysis date" else ""}${if (deadline.needsReview) " and marked it for review" else ""}. Check the original document before adding it to your calendar.\n\n${deadline.reviewReason.orEmpty()}\n${deadline.evidence}")
                 },
                 confirmButton = {
                     Button(onClick = {
@@ -433,7 +433,7 @@ internal fun PlainlyApp(context: Context) {
                                 putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, deadline.date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
                                 putExtra(CalendarContract.EXTRA_EVENT_END_TIME, deadline.date.plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())
                                 putExtra(CalendarContract.Events.TITLE, "Review Plainly document deadline")
-                                putExtra(CalendarContract.Events.DESCRIPTION, "Possible deadline detected by Plainly. Confirmed by user; still check the original document.\n${deadline.evidence}")
+                                putExtra(CalendarContract.Events.DESCRIPTION, "Possible deadline detected by Plainly. Confirmed by user; still check the original document.\n${deadline.reviewReason.orEmpty()}\n${deadline.evidence}")
                             }
                             runCatching { context.startActivity(intent) }.onFailure { plainlyViewModel.setError("No calendar app is available") }
                         }

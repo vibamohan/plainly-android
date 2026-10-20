@@ -253,7 +253,7 @@ fun DeadlineCard(deadline: Deadline, onCalendar: (Deadline) -> Unit) {
         } else {
             "Date detected; confirm against the original"
         }
-        EvidenceCard("${deadline.date}\n$dateLabel", "${deadline.evidence}\nSource spans: ${deadline.sourceSpanIds.joinToString()}")
+        EvidenceCard("${deadline.date}\n$dateLabel", "${deadline.reviewReason?.let { "$it\n" }.orEmpty()}${deadline.evidence}\nSource spans: ${deadline.sourceSpanIds.joinToString()}")
         OutlinedButton(onClick = { onCalendar(deadline) }) { Text("Confirm and add to calendar") }
     }
 }

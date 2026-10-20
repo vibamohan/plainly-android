@@ -18,7 +18,8 @@ data class Deadline(
     val evidence: String,
     val needsReview: Boolean,
     val sourceSpanIds: List<String> = emptyList(),
-    val isCalculatedFromReferenceDate: Boolean = false
+    val isCalculatedFromReferenceDate: Boolean = false,
+    val reviewReason: String? = null
 )
 data class IssueDate(val date: LocalDate, val evidence: String, val needsReview: Boolean, val sourceSpanIds: List<String> = emptyList())
 data class ActionItem(val instruction: String, val evidence: String, val importance: Double, val sourceSpanIds: List<String> = emptyList())
@@ -50,10 +51,10 @@ data class Analysis(
 
 /** Conservative, deterministic analysis. Scores are heuristics, NOT fraud probabilities. */
 object DocumentAnalyzer {
-    private val actionWords = Regex("\\b(submit|return|complete|send|provide|sign|pay|contact|respond|schedule|bring|upload)\\b", RegexOption.IGNORE_CASE)
+    private val actionWords = Regex("\\b(submit|return|complete|send|provide|sign|pay|contact|respond|schedule|bring|upload|attend)\\b", RegexOption.IGNORE_CASE)
     private val deadlineWords = Regex("\\b(by|before|due|deadline|no later than|on or before)\\b", RegexOption.IGNORE_CASE)
-    private val monthDate = Regex("\\b(January|February|March|April|May|June|July|August|September|October|November|December)\\s+(\\d{1,2})(?:,?\\s+(\\d{4}))?\\b", RegexOption.IGNORE_CASE)
-    private val numericDate = Regex("\\b(\\d{1,2})/(\\d{1,2})/(\\d{4})\\b")
+    private val monthDate = Regex("\\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+(\\d{1,2})(?:,?\\s+(\\d{4}))?\\b", RegexOption.IGNORE_CASE)
+    private val numericDate = Regex("\\b(\\d{1,2})/(\\d{1,2})/(\\d{4}|\\d{2})\\b")
     private val isoDate = Regex("\\b(\\d{4})-(\\d{2})-(\\d{2})\\b")
     private val relativeDays = Regex("\\b(?:within|in|no later than)\\s+(\\d{1,3})\\s+days?\\b", RegexOption.IGNORE_CASE)
     private val rules = listOf(
@@ -61,10 +62,10 @@ object DocumentAnalyzer {
         Triple("Cryptocurrency payment", Regex("\\b(bitcoin|crypto(?:currency)?)\\b", RegexOption.IGNORE_CASE), 30),
         Triple("Threatening language", Regex("\\b(arrest|deportation|imprisonment)\\b", RegexOption.IGNORE_CASE), 25),
         Triple("Credential request", Regex("\\b(password|one.time code|verification code)\\b", RegexOption.IGNORE_CASE), 25),
-        Triple("Personal information request", Regex("\\b(social security|tax id|date of birth|bank account number|routing number)\\b", RegexOption.IGNORE_CASE), 25),
+        Triple("Personal information request", Regex("\\b(social security number|tax id|date of birth|bank account number|routing number)\\b", RegexOption.IGNORE_CASE), 25),
         Triple("Bank or wire payment request", Regex("\\b(wire transfer|bank transfer|routing number|wire funds|send a payment)\\b", RegexOption.IGNORE_CASE), 20),
         Triple("Remote access or software installation request", Regex("\\b(remote access|screen share|install (?:this|the) software|download (?:this|the) app)\\b", RegexOption.IGNORE_CASE), 20),
-        Triple("Urgent pressure", Regex("\\b(act today|immediately|within 24 hours|last chance|final notice)\\b", RegexOption.IGNORE_CASE), 10)
+        Triple("Urgent pressure", Regex("\\b(act today|within 24 hours|last chance|final notice)\\b", RegexOption.IGNORE_CASE), 10)
     )
 
     fun analyze(
@@ -93,18 +94,21 @@ object DocumentAnalyzer {
                 actions += ActionItem(text, evidence(sentence), 1.0 + emphasis, sourceSpanIds)
             }
             monthDate.findAll(text).forEach { match ->
-                    val month = Month.valueOf(match.groupValues[1].uppercase(Locale.US))
+                    val month = Month.values().first { it.name.take(3).equals(match.groupValues[1].take(3), true) }
                     val day = match.groupValues[2].toInt()
                     val hasYear = match.groupValues[3].isNotBlank()
                     val year = match.groupValues[3].toIntOrNull() ?: referenceDate.year
                     runCatching { LocalDate.of(year, month, day) }.getOrNull()?.let {
-                        if (isDeadlineContext(text, match.range)) deadlines += Deadline(it, evidence(sentence), !hasYear, sourceSpanIds)
-                        else issueDates += IssueDate(it, evidence(sentence), !hasYear, sourceSpanIds)
+                        if (isDeadlineContext(text, match.range)) {
+                            val assumed = if (!hasYear && it.isBefore(referenceDate)) it.plusYears(1) else it
+                            deadlines += Deadline(assumed, evidence(sentence), !hasYear, sourceSpanIds,
+                                reviewReason = if (!hasYear) "Year absent: ${assumed.year} is an assumption based on the analysis date; confirm with the sender." else null)
+                        } else issueDates += IssueDate(it, evidence(sentence), !hasYear, sourceSpanIds)
                     }
             }
             numericDate.findAll(text).forEach { match ->
-                    runCatching { LocalDate.of(match.groupValues[3].toInt(), match.groupValues[1].toInt(), match.groupValues[2].toInt()) }.getOrNull()?.let {
-                        if (isDeadlineContext(text, match.range)) deadlines += Deadline(it, evidence(sentence), true, sourceSpanIds)
+                    runCatching { LocalDate.of(match.groupValues[3].toInt().let { year -> if (match.groupValues[3].length == 2) 2000 + year else year }, match.groupValues[1].toInt(), match.groupValues[2].toInt()) }.getOrNull()?.let {
+                        if (isDeadlineContext(text, match.range)) deadlines += Deadline(it, evidence(sentence), true, sourceSpanIds, reviewReason = "Numeric date interpreted as US month/day; two-digit years assume 2000–2099. Confirm against the original.")
                         else issueDates += IssueDate(it, evidence(sentence), true, sourceSpanIds)
                     }
             }
@@ -124,14 +128,14 @@ object DocumentAnalyzer {
                 )
             }
             rules.forEach { (label, pattern, weight) ->
-                val match = pattern.find(text)
-                if (match != null && !isNegated(text, match.range.first)) findings += Finding(label, evidence(sentence), weight, sourceSpanIds)
+                if (containsNonNegated(text, pattern)) findings += Finding(label, evidence(sentence), weight, sourceSpanIds)
             }
             if (containsNonNegated(text, Regex("\\b(account|subscription|profile)\\b", RegexOption.IGNORE_CASE)) &&
-                containsNonNegated(text, Regex("\\b(verify|reset|confirm|suspended|compromised|hacked|unauthorized)\\b", RegexOption.IGNORE_CASE))) {
+                containsNonNegated(text, Regex("\\b(suspended|suspension|compromised|hacked|unauthorized|closed|locked)\\b", RegexOption.IGNORE_CASE))) {
                 findings += Finding("Account verification or redirection", evidence(sentence), 15, sourceSpanIds)
             }
-            if (containsNonNegated(text, Regex("\\b(click|open|check|follow)\\b", RegexOption.IGNORE_CASE)) &&
+            val strongLinkContext = containsNonNegated(text, Regex("\\b(password|verification code|one.time code|payment|pay|suspended|suspension|locked|closed)\\b", RegexOption.IGNORE_CASE))
+            if (strongLinkContext && containsNonNegated(text, Regex("\\b(click|open|check|follow)\\b", RegexOption.IGNORE_CASE)) &&
                 containsNonNegated(text, Regex("\\b(here|link|attachment|file)\\b", RegexOption.IGNORE_CASE))) {
                 findings += Finding("Suspicious link or attachment direction", evidence(sentence), 15, sourceSpanIds)
             }
@@ -194,14 +198,14 @@ object DocumentAnalyzer {
             .distinctBy { it.value to it.sourceSpanIds }
             .take(4)
             .map { SummaryItem(it.value, it.sourceSpanIds) }
-        val decisionSummary = buildDecisionSummary(sorted, deadlines, issueDates, unique, riskLevel, graph.intents, warnings)
+        val decisionSummary = buildDecisionSummary(sorted, deadlines, issueDates, unique, riskLevel, graph.intents, warnings, graph.evidence.filter { it.kind == EvidenceKind.AMOUNT }.map { it.value })
         val summary = decisionSummary.toCompactText().ifBlank { fallbackSummary }
         return Analysis(sorted, deadlines.distinctBy { it.date to it.evidence }, unique, score, summary, graph.intents, graph.evidence, graph.relations, riskLevel, warnings, summaryItems, issueDates.distinctBy { it.date to it.evidence }, decisionSummary)
     }
 
     private fun buildDecisionSummary(
         actions: List<ActionItem>, deadlines: List<Deadline>, issueDates: List<IssueDate>, findings: List<Finding>,
-        riskLevel: RiskLevel, intents: Set<IntentKind>, warnings: List<String>
+        riskLevel: RiskLevel, intents: Set<IntentKind>, warnings: List<String>, amounts: List<String>
     ): DecisionSummary {
         val sourceIds = (actions.flatMap { it.sourceSpanIds } + deadlines.flatMap { it.sourceSpanIds } + issueDates.flatMap { it.sourceSpanIds } + findings.flatMap { it.sourceSpanIds }).distinct()
         val actionText = actions.joinToString(" ") { it.instruction }.replace(Regex("\\s+"), " ").trim()
@@ -209,6 +213,8 @@ object DocumentAnalyzer {
             appointmentDetails(actionText, deadlines, issueDates)
         } else null
         val what = when {
+            riskLevel == RiskLevel.NO_CLEAR_INDICATORS && IntentKind.APPOINTMENT_OR_ATTENDANCE in intents -> appointment?.what ?: "Meeting or appointment requiring attendance."
+            riskLevel == RiskLevel.NO_CLEAR_INDICATORS && Regex("permission (?:slip|form)", RegexOption.IGNORE_CASE).containsMatchIn(actionText) -> "Permission form requiring a response."
             IntentKind.PAYMENT_REQUEST in intents && IntentKind.CREDENTIAL_REQUEST in intents -> "Payment and sensitive-information request."
             IntentKind.PAYMENT_REQUEST in intents -> "Payment request."
             IntentKind.CREDENTIAL_REQUEST in intents -> "Request for sensitive account information."
@@ -219,6 +225,8 @@ object DocumentAnalyzer {
         val next = buildList {
             when {
                 IntentKind.CREDENTIAL_REQUEST in intents -> add("Verify the request independently before sharing passwords or codes.")
+                riskLevel == RiskLevel.NO_CLEAR_INDICATORS && IntentKind.APPOINTMENT_OR_ATTENDANCE in intents -> add(appointment?.next ?: "Confirm the meeting details and bring requested materials.")
+                riskLevel == RiskLevel.NO_CLEAR_INDICATORS && Regex("permission (?:slip|form)", RegexOption.IGNORE_CASE).containsMatchIn(actionText) -> add("Review, sign, and return the permission form as instructed in the original.")
                 IntentKind.PAYMENT_REQUEST in intents -> add("Verify the recipient, amount, and payment method before sending money.")
                 IntentKind.APPOINTMENT_OR_ATTENDANCE in intents -> add(appointment?.next ?: "Confirm the meeting details and bring requested materials.")
                 actions.isNotEmpty() -> add("Review the requested action against the original before completing it.")
@@ -226,8 +234,11 @@ object DocumentAnalyzer {
                 else -> add("No clear action was detected; review the original for context.")
             }
         }
+        val nextWithAmounts = next.map { step ->
+            if (amounts.isNotEmpty()) "$step Amount mentioned: ${amounts.distinct().joinToString(", ")}; confirm against the original." else step
+        }
         val dates = (deadlines.map {
-            "${it.date.format(DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US))}${if (it.needsReview) " — confirm the date or year" else " — confirm against the original"}"
+            "${it.date.format(DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US))}${if (it.reviewReason != null) " — ${it.reviewReason}" else if (it.needsReview) " — confirm the date or year" else " — confirm against the original"}"
         } + issueDates.map {
             "${it.date.format(DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US))} — mentioned date; confirm against the original"
         }).distinct().take(2)
@@ -255,7 +266,7 @@ object DocumentAnalyzer {
             if (sourceIds.isEmpty()) add("No actionable evidence was extracted from the readable text.")
         }
         val uncertainty = (warnings + qualityNotes).distinct()
-        return DecisionSummary(what, next, dates, why, verify, uncertainty, sourceIds, qualityNotes)
+        return DecisionSummary(what, nextWithAmounts, dates, why, verify, uncertainty, sourceIds, qualityNotes)
     }
 
     private data class AppointmentDetails(val what: String, val next: String)
@@ -268,10 +279,10 @@ object DocumentAnalyzer {
             else -> Regex("\\b(hearing|interview|appointment|conference|meeting)\\b", RegexOption.IGNORE_CASE)
                 .find(normalized)?.value?.replaceFirstChar { it.uppercase(Locale.US) } ?: "Scheduled event"
         }
-        val time = Regex("\\b\\d{1,2}(?::\\d{2})?\\s?(?:AM|PM)\\b", RegexOption.IGNORE_CASE).find(normalized)?.value
+        val time = Regex("\\b\\d{1,2}(?::\\d{2})?\\s?(?:a\\.?m\\.?|p\\.?m\\.?)(?![a-z])", RegexOption.IGNORE_CASE).find(normalized)?.value
         val location = Regex("\\b(?:held|meet|meeting|appointment|hearing)\\s+(?:at|in)\\s+([^.!?;]+)", RegexOption.IGNORE_CASE)
             .find(normalized)?.groupValues?.getOrNull(1)?.trim()
-            ?.takeUnless { Regex("^\\d{1,2}(?::\\d{2})?\\s?(?:AM|PM)$", RegexOption.IGNORE_CASE).matches(it) }
+            ?.takeUnless { Regex("^\\d{1,2}(?::\\d{2})?\\s?(?:a\\.?m\\.?|p\\.?m\\.?)$", RegexOption.IGNORE_CASE).matches(it) }
         val materials = Regex("\\bbring\\s+(?:the\\s+)?(.+?)(?=\\s+and\\s+(?:attend|go|arrive)\\b|[.!?;]|$)", RegexOption.IGNORE_CASE)
             .find(normalized)?.groupValues?.getOrNull(1)?.trim()
         val dateText = (deadlines.map { it.date } + issueDates.map { it.date }).distinct().firstOrNull()
@@ -322,7 +333,7 @@ object DocumentAnalyzer {
             val request = if (actionWords.containsMatchIn(text) || Regex("\\b(pay|payment|fee|gift\\s*cards?|bitcoin|crypto)\\b", RegexOption.IGNORE_CASE).containsMatchIn(text)) add(EvidenceKind.REQUEST) else null
             if (actionWords.containsMatchIn(text)) intents += IntentKind.ACTION_REQUIRED
             if (Regex("\\b(pay|payment|fee|gift\\s*cards?|bitcoin|crypto)\\b", RegexOption.IGNORE_CASE).containsMatchIn(text)) intents += IntentKind.PAYMENT_REQUEST
-            if (Regex("\\b(password|verification code|one.time code|PIN|social security)\\b", RegexOption.IGNORE_CASE).containsMatchIn(text)) {
+            if (Regex("\\b(password|verification code|one.time code|PIN|social security number)\\b", RegexOption.IGNORE_CASE).containsMatchIn(text)) {
                 intents += IntentKind.CREDENTIAL_REQUEST
                 val credential = add(EvidenceKind.REQUEST)
                 request?.let { relations += EvidenceRelation(it.id, credential.id, RelationKind.REQUESTS, spans) }
@@ -380,7 +391,12 @@ object DocumentAnalyzer {
     private fun evidence(sentence: List<TextEvidence>): String = sentence.joinToString(" ") { "Page ${it.page}: ${it.text.trim()}" }
 
     private fun isNegated(text: String, matchStart: Int): Boolean {
-        val prefix = text.substring(0, matchStart).takeLast(40).lowercase(Locale.US)
+        val prefix = text.substring(0, matchStart)
+            .substringAfterLast('.').substringAfterLast(';').substringAfterLast('!').substringAfterLast('?')
+            .substringAfterLast(',').takeLast(80).lowercase(Locale.US)
+            .replace(Regex("\\bno later than\\b"), "")
+            .replace(Regex("\\b(?:do not|don't|never)\\s+(?:delay|ignore|miss)\\b"), "")
+            .split(Regex("\\bbut\\b")).last()
         return Regex("\\b(no|not|never|without|do not|does not|don't|doesn't)\\b").containsMatchIn(prefix)
     }
 

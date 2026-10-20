@@ -8,6 +8,66 @@ import org.plainly.app.model.toParsedDocument
 import java.time.LocalDate
 
 class DocumentAnalyzerTest {
+    @Test fun routineSchoolDirectionsDoNotRaiseWarnings() {
+        listOf(
+            "Please check the attached file for the updated bell schedule.",
+            "Log in to your ParentSquare account to confirm your contact information.",
+            "Contact the school office immediately.",
+            "Open the attachment from this message.",
+            "Social Security sent a benefits notice."
+        ).forEach { text -> assertEquals(text, 0, DocumentAnalyzer.analyze(listOf(TextEvidence(text, 1))).score) }
+    }
+    @Test fun urgencyIdiomsDoNotHideCredentialOrPaymentRequests() {
+        listOf(
+            "Respond no later than Friday with your password and verification code.",
+            "Do not delay, send gift cards.",
+            "Do not ignore this request for your password.",
+            "Do not miss the deadline to send gift cards."
+        ).forEach { text -> assertTrue(text, DocumentAnalyzer.analyze(listOf(TextEvidence(text, 1))).score > 0) }
+    }
+    @Test fun negationDoesNotCrossSentenceOrContrastBoundaries() {
+        listOf("Do not share your password. Send your password to us.", "Never send gift cards, but send bitcoin.")
+            .forEach { assertTrue(DocumentAnalyzer.analyze(listOf(TextEvidence(it, 1))).score > 0) }
+    }
+    @Test fun linksNeedStrongerContext() {
+        assertEquals(0, DocumentAnalyzer.analyze(listOf(TextEvidence("Click here to view the school newsletter.", 1))).score)
+        assertTrue(DocumentAnalyzer.analyze(listOf(TextEvidence("Your account is suspended; click here to confirm payment.", 1)))
+            .findings.any { it.label == "Suspicious link or attachment direction" })
+    }
+    @Test fun missingYearRollsForwardOnlyForDeadlineAndExplainsAssumption() {
+        val result = DocumentAnalyzer.analyze(listOf(TextEvidence("Issued January 2. Return the form by January 9.", 1)), LocalDate.of(2026, 10, 19))
+        assertEquals(LocalDate.of(2027, 1, 9), result.deadlines.single().date)
+        assertTrue(result.deadlines.single().needsReview)
+        assertTrue(result.deadlines.single().reviewReason!!.contains("assumption"))
+        assertEquals(LocalDate.of(2026, 1, 2), result.issueDates.single().date)
+    }
+    @Test fun explicitPastYearIsNeverChanged() {
+        val deadline = DocumentAnalyzer.analyze(listOf(TextEvidence("Return by January 9, 2025.", 1)), LocalDate.of(2026, 10, 19)).deadlines.single()
+        assertEquals(LocalDate.of(2025, 1, 9), deadline.date)
+        assertFalse(deadline.needsReview)
+    }
+    @Test fun abbreviatedMonthAndTwoDigitYearAreSupported() {
+        val date = LocalDate.of(2026, 11, 5)
+        assertEquals(date, DocumentAnalyzer.analyze(listOf(TextEvidence("Respond by Nov. 5, 2026.", 1))).deadlines.single().date)
+        val numeric = DocumentAnalyzer.analyze(listOf(TextEvidence("Respond by 11/05/26.", 1))).deadlines.single()
+        assertEquals(date, numeric.date)
+        assertTrue(numeric.needsReview)
+        assertTrue(numeric.reviewReason!!.contains("2000"))
+    }
+    @Test fun invalidDatesAreNotInvented() {
+        assertTrue(DocumentAnalyzer.analyze(listOf(TextEvidence("Return by Feb. 30, 2026 or 13/05/26.", 1))).deadlines.isEmpty())
+    }
+    @Test fun appointmentTimeSupportsDottedMeridiem() {
+        val result = DocumentAnalyzer.analyze(listOf(TextEvidence("Please attend the meeting on Nov. 5, 2026 at 3:30 p.m.", 1)))
+        assertTrue(result.decisionSummary!!.whatItIs.contains("3:30 p.m."))
+    }
+    @Test fun smallFeeDoesNotOverrideAppointmentOrPermissionIntent() {
+        val appointment = DocumentAnalyzer.analyze(listOf(TextEvidence("Please attend the meeting. A fee of $5 applies.", 1)))
+        assertTrue(appointment.decisionSummary!!.whatItIs.contains("Meeting"))
+        val permission = DocumentAnalyzer.analyze(listOf(TextEvidence("Sign the permission slip for the field trip and return the $5 fee.", 1)))
+        assertTrue(permission.decisionSummary!!.whatItIs.contains("Permission"))
+        assertTrue(permission.decisionSummary!!.nextSteps.single().contains("$5"))
+    }
     @Test fun extractsDeadlineAndAction() {
         val result = DocumentAnalyzer.analyze(listOf(TextEvidence("Please submit proof of residency by October 20, 2026.", 1)), LocalDate.of(2026, 10, 11))
         assertEquals(LocalDate.of(2026, 10, 20), result.deadlines.single().date)
@@ -111,7 +171,7 @@ class DocumentAnalyzerTest {
         assertTrue(result.findings.any { it.label == "Account verification or redirection" })
     }
     @Test fun detectsSuspiciousAttachmentDirection() {
-        val result = DocumentAnalyzer.analyze(listOf(TextEvidence("Open the attachment from this message.", 1)))
+        val result = DocumentAnalyzer.analyze(listOf(TextEvidence("Open the attachment to send your password.", 1)))
         assertTrue(result.findings.any { it.label == "Suspicious link or attachment direction" })
     }
     @Test fun detectsMalwareClaim() {
