@@ -30,6 +30,8 @@ data class PlainlyUiState(
     val analysis: Analysis? = null,
     val translated: String? = null,
     val translatedOriginal: String? = null,
+    val translatedLanguage: String? = null,
+    val originalTranslationLanguage: String? = null,
     val languageTag: String? = null,
     val languageWarning: String? = null,
     val translationStatus: String? = null
@@ -48,7 +50,7 @@ class PlainlyViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _state.value = _state.value.copy(
                 busy = true, error = null, lines = emptyList(), analysis = null,
-                translated = null, translatedOriginal = null, languageTag = null,
+                translated = null, translatedOriginal = null, translatedLanguage = null, originalTranslationLanguage = null, languageTag = null,
                 languageWarning = null, translationStatus = null
             )
             try {
@@ -64,7 +66,10 @@ class PlainlyViewModel(application: Application) : AndroidViewModel(application)
                 val result = withContext(Dispatchers.Default) { DocumentAnalyzer.analyze(extracted, learnedWarningModel = learnedWarningModel) }
                 _state.value = _state.value.copy(lines = extracted, analysis = result, languageTag = language.languageTag, languageWarning = language.warning)
                 withContext(Dispatchers.IO) {
-                    historyDao.insert(HistoryEntry(displayName = uri.lastPathSegment ?: "Document", sourceUri = uri.toString(), summary = result.summary))
+                    val name = if (temporaryFiles.isNotEmpty()) {
+                        "Camera scan, " + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("MMM d, h:mm a"))
+                    } else displayName(uri)
+                    historyDao.insert(HistoryEntry(displayName = name, sourceUri = if (temporaryFiles.isEmpty()) uri.toString() else "", summary = result.summary))
                 }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "Could not process document")
@@ -77,9 +82,9 @@ class PlainlyViewModel(application: Application) : AndroidViewModel(application)
 
     fun translate(targetLanguage: String) {
         val current = _state.value.analysis ?: return
-        val sourceLanguage = detectedTranslateLanguage()
+        val sourceLanguage = TranslateLanguage.ENGLISH // Synthesized analysis is always English.
         viewModelScope.launch {
-            _state.value = _state.value.copy(busy = true, error = null, translationStatus = "Preparing on-device translation model…")
+            _state.value = _state.value.copy(busy = true, error = null, translated = null, translatedLanguage = null, translatedOriginal = null, originalTranslationLanguage = null, translationStatus = "Preparing on-device translation model…")
             try {
                 val decision = current.decisionSummary
                 val text = if (decision != null) {
@@ -88,7 +93,7 @@ class PlainlyViewModel(application: Application) : AndroidViewModel(application)
                     current.summary + "\n" + current.actions.joinToString("\n") { it.instruction }
                 }
                 val result = withContext(Dispatchers.IO) { LocalTranslator.translate(text, targetLanguage, sourceLanguage) }
-                _state.value = _state.value.copy(translated = result, translationStatus = "Translation complete")
+                _state.value = _state.value.copy(translated = result, translatedLanguage = targetLanguage, translationStatus = "Translation complete")
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "Translation unavailable: ${e.message}", translationStatus = null)
             } finally { _state.value = _state.value.copy(busy = false) }
@@ -103,7 +108,7 @@ class PlainlyViewModel(application: Application) : AndroidViewModel(application)
             _state.value = _state.value.copy(busy = true, error = null, translationStatus = "Preparing on-device translation model…")
             try {
                 val result = withContext(Dispatchers.IO) { LocalTranslator.translate(text, targetLanguage, sourceLanguage) }
-                _state.value = _state.value.copy(translatedOriginal = result, translationStatus = "Translation complete")
+                _state.value = _state.value.copy(translatedOriginal = result, originalTranslationLanguage = targetLanguage, translationStatus = "Translation complete")
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "Original-text translation unavailable: ${e.message}", translationStatus = null)
             } finally { _state.value = _state.value.copy(busy = false) }
@@ -114,10 +119,16 @@ class PlainlyViewModel(application: Application) : AndroidViewModel(application)
     fun setError(message: String) { _state.value = _state.value.copy(error = message, busy = false) }
     fun clearCurrentDocument() {
         _state.value = _state.value.copy(
-            lines = emptyList(), analysis = null, translated = null, translatedOriginal = null,
+            lines = emptyList(), analysis = null, translated = null, translatedOriginal = null, translatedLanguage = null, originalTranslationLanguage = null,
             languageTag = null, languageWarning = null, translationStatus = null, error = null
         )
     }
+
+    private fun displayName(uri: Uri): String = runCatching {
+        getApplication<Application>().contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(cursor.getColumnIndexOrThrow(android.provider.OpenableColumns.DISPLAY_NAME)) else null
+        }
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: "Imported document"
 
     private fun detectedTranslateLanguage(): String =
         TranslateLanguage.fromLanguageTag(_state.value.languageTag.orEmpty()) ?: TranslateLanguage.ENGLISH
