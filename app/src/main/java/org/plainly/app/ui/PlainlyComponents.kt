@@ -1,9 +1,17 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package org.plainly.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -21,6 +29,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.stringResource
+import org.plainly.app.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -89,10 +99,10 @@ fun PlainlyTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun AppHeader(onInfo: () -> Unit) {
-    Row(
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
@@ -101,11 +111,11 @@ fun AppHeader(onInfo: () -> Unit) {
                 }
             }
             Column {
-                Text("Plainly", style = MaterialTheme.typography.headlineSmall)
-                Text("Understand before you act", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.understand), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        OutlinedButton(onClick = onInfo) { Text("About") }
+        OutlinedButton(onClick = onInfo) { Text(stringResource(R.string.about)) }
     }
 }
 
@@ -137,20 +147,20 @@ fun ModernSectionHeader(title: String, subtitle: String? = null) {
 @Composable
 fun SpeechControls(enabled: Boolean, speaking: Boolean, paused: Boolean, onSpeak: () -> Unit, onPause: () -> Unit, onResume: () -> Unit, onReplay: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Read aloud", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onSpeak, enabled = enabled && !speaking) { Text("Read summary") }
-            OutlinedButton(onClick = onPause, enabled = enabled && speaking) { Text("Pause") }
-            OutlinedButton(onClick = onResume, enabled = enabled && paused && !speaking) { Text("Resume") }
-            OutlinedButton(onClick = onReplay, enabled = enabled && !speaking) { Text("Replay") }
+        Text(stringResource(R.string.read_aloud), style = MaterialTheme.typography.titleMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onSpeak, enabled = enabled && !speaking) { Text(stringResource(R.string.read_summary)) }
+            OutlinedButton(onClick = onPause, enabled = enabled && speaking) { Text(stringResource(R.string.pause)) }
+            OutlinedButton(onClick = onResume, enabled = enabled && paused && !speaking) { Text(stringResource(R.string.resume)) }
+            OutlinedButton(onClick = onReplay, enabled = enabled && !speaking) { Text(stringResource(R.string.replay)) }
         }
-        if (!enabled) Text("Text-to-speech is unavailable on this device.", style = MaterialTheme.typography.bodySmall)
+        if (!enabled) Text(stringResource(R.string.speech_unavailable), style = MaterialTheme.typography.bodySmall)
     }
 }
 
 @Composable
 fun ReviewWarning() = Card {
-    Text("Always check the original document. OCR and rule-based analysis can miss, misread, or misinterpret important details.", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.error)
+    Text(stringResource(R.string.review_warning), Modifier.padding(12.dp), color = MaterialTheme.colorScheme.error)
 }
 
 @Composable
@@ -162,18 +172,18 @@ fun DecisionSummaryCard(summary: DecisionSummary) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary) {
-                    Text("✦", color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(8.dp))
+                    Text("✦", color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(8.dp).clearAndSetSemantics {})
                 }
                 Column {
-                    Text("Plainly's take", style = MaterialTheme.typography.titleLarge)
-                    Text("The useful version, not a copy", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
+                    Text(stringResource(R.string.plainly_take), style = MaterialTheme.typography.titleLarge)
+                    Text(stringResource(R.string.useful_version), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
                 }
             }
-            SummaryBlock("What this is", summary.whatItIs)
-            summary.nextSteps.firstOrNull()?.let { SummaryBlock("Your next move", it) }
-            summary.importantDates.firstOrNull()?.let { SummaryBlock("Important date", it) }
+            SummaryBlock(stringResource(R.string.what_is), summary.whatItIs)
+            summary.nextSteps.firstOrNull()?.let { SummaryBlock(stringResource(R.string.next_move), it) }
+            summary.importantDates.firstOrNull()?.let { SummaryBlock(stringResource(R.string.important_date), it) }
             summary.uncertainty.firstOrNull()?.let {
-                Text("Note · $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(stringResource(R.string.note, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
             }
         }
     }
@@ -190,18 +200,18 @@ private fun SummaryBlock(label: String, text: String) {
 @Composable
 fun FraudWhyCard(level: RiskLevel, findings: List<org.plainly.app.analysis.Finding>) {
     val (title, why, color) = when (level) {
-        RiskLevel.HIGH -> Triple("Fraud warning signals found", findings.take(2).joinToString("; ") { it.label }.ifBlank { "Several document patterns need independent review." }, MaterialTheme.colorScheme.errorContainer)
-        RiskLevel.UNCERTAIN -> Triple("Possible warning signal", findings.take(2).joinToString("; ") { it.label }.ifBlank { "A document pattern needs independent review." }, MaterialTheme.colorScheme.tertiaryContainer)
-        RiskLevel.NO_CLEAR_INDICATORS -> Triple("No clear fraud warning signals", "No matching warning patterns were found. This does not verify the sender or document.", MaterialTheme.colorScheme.secondaryContainer)
+        RiskLevel.HIGH -> Triple(stringResource(R.string.high_warning), findings.take(2).joinToString("; ") { it.label }.ifBlank { "Several document patterns need independent review." }, MaterialTheme.colorScheme.errorContainer)
+        RiskLevel.UNCERTAIN -> Triple(stringResource(R.string.possible_warning), findings.take(2).joinToString("; ") { it.label }.ifBlank { "A document pattern needs independent review." }, MaterialTheme.colorScheme.tertiaryContainer)
+        RiskLevel.NO_CLEAR_INDICATORS -> Triple(stringResource(R.string.no_clear_warning), stringResource(R.string.no_verification), MaterialTheme.colorScheme.secondaryContainer)
     }
     Card(colors = CardDefaults.cardColors(containerColor = color), shape = MaterialTheme.shapes.large) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (level == RiskLevel.HIGH) "!" else if (level == RiskLevel.UNCERTAIN) "?" else "✓", style = MaterialTheme.typography.titleLarge)
-                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(if (level == RiskLevel.HIGH) "!" else if (level == RiskLevel.UNCERTAIN) "?" else "✓", modifier = Modifier.clearAndSetSemantics {}, style = MaterialTheme.typography.titleLarge)
+                Text(title, modifier = Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
             }
             Text(why, style = MaterialTheme.typography.bodyMedium)
-            Text("Heuristic review only — not a fraud probability or authenticity check.", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.heuristic_notice), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -231,7 +241,7 @@ fun DeadlineCard(deadline: Deadline, onCalendar: (Deadline) -> Unit) {
             "Date detected; confirm against the original"
         }
         EvidenceCard("${deadline.date}\n$dateLabel", "${deadline.reviewReason?.let { "$it\n" }.orEmpty()}${deadline.evidence}\nSource spans: ${deadline.sourceSpanIds.joinToString()}")
-        OutlinedButton(onClick = { onCalendar(deadline) }) { Text("Confirm and add to calendar") }
+        OutlinedButton(onClick = { onCalendar(deadline) }) { Text(stringResource(R.string.confirm_add)) }
     }
 }
 
@@ -240,7 +250,7 @@ fun EvidenceCard(title: String, evidence: String) {
     var expanded by remember { mutableStateOf(false) }
     Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title)
-        OutlinedButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Hide evidence" else "Show evidence") }
+        OutlinedButton(onClick = { expanded = !expanded }) { Text(if (expanded) stringResource(R.string.hide_evidence) else stringResource(R.string.show_evidence)) }
         if (expanded) Text(evidence, style = MaterialTheme.typography.bodySmall)
     } }
 }
@@ -249,15 +259,20 @@ fun EvidenceCard(title: String, evidence: String) {
 fun TranslationComparison(original: String, translated: String, targetLabel: String) {
     Card {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Original and $targetLabel", style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Original", style = MaterialTheme.typography.labelLarge)
-                    Text(original, style = MaterialTheme.typography.bodySmall)
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(targetLabel, style = MaterialTheme.typography.labelLarge)
-                    Text(translated, style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.original_and, targetLabel), style = MaterialTheme.typography.titleMedium)
+            BoxWithConstraints {
+                if (maxWidth < 600.dp || LocalDensity.current.fontScale > 1.3f) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(stringResource(R.string.original), style = MaterialTheme.typography.labelLarge)
+                        Text(original)
+                        Text(targetLabel, style = MaterialTheme.typography.labelLarge)
+                        Text(translated)
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(Modifier.weight(1f)) { Text(stringResource(R.string.original)); Text(original) }
+                        Column(Modifier.weight(1f)) { Text(targetLabel); Text(translated) }
+                    }
                 }
             }
         }
@@ -268,7 +283,7 @@ fun TranslationComparison(original: String, translated: String, targetLabel: Str
 fun SourcePageCard(page: Int, lines: List<String>) {
     Card {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Page $page", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.page_number, page), style = MaterialTheme.typography.titleSmall)
             lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
     }

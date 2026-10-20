@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package org.plainly.app
 
 import android.content.Context
@@ -22,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -103,7 +106,6 @@ internal fun PlainlyApp(context: Context) {
     var cameraPath by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingCameraPath by rememberSaveable { mutableStateOf<String?>(null) }
     val cameraFile = cameraPath?.let(::File)
-    val cameraUri = cameraFile?.let { FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", it) }
     val pendingCameraFile = pendingCameraPath?.let(::File)
     var cameraRotation by rememberSaveable { mutableIntStateOf(0) }
     var cameraCropPercent by rememberSaveable { mutableIntStateOf(3) }
@@ -122,6 +124,8 @@ internal fun PlainlyApp(context: Context) {
     var languageMenu by remember { mutableStateOf(false) }
     var showDetails by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(false) }
+    val preferences = remember { context.getSharedPreferences("plainly-onboarding", Context.MODE_PRIVATE) }
+    var firstRun by rememberSaveable { mutableStateOf(!preferences.getBoolean("seen", false)) }
     var showClearHistory by remember { mutableStateOf(false) }
     var calendarConfirmation by remember { mutableStateOf<Deadline?>(null) }
     val tts = remember { TextToSpeech(context) { status -> speechReady = status == TextToSpeech.SUCCESS } }
@@ -201,12 +205,13 @@ internal fun PlainlyApp(context: Context) {
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         AppHeader { showInfo = true }
-        Text("Your private document companion", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(context.getString(R.string.tagline), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -214,32 +219,40 @@ internal fun PlainlyApp(context: Context) {
         ) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Text("✦", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                    Text("✦", modifier = Modifier.clearAndSetSemantics {}, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
                     Column {
-                        Text("Start with a document", style = MaterialTheme.typography.titleLarge)
-                        Text("Clarity in a few seconds", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(context.getString(R.string.start_document), style = MaterialTheme.typography.titleLarge)
+                        Text(context.getString(R.string.clarity), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Text("Get a plain-language summary, deadlines, actions, and caution signals on your phone.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { picker.launch(arrayOf("*/*")) }, enabled = !uiState.busy) { Text("Choose file") }
-                    OutlinedButton(onClick = ::capture, enabled = !uiState.busy) { Text("Use camera") }
+                Text(context.getString(R.string.intro), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { picker.launch(arrayOf("*/*")) }, enabled = !uiState.busy) { Text(context.getString(R.string.choose_file)) }
+                    OutlinedButton(onClick = ::capture, enabled = !uiState.busy) { Text(context.getString(R.string.use_camera)) }
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusChip("On-device analysis")
-            StatusChip("No cloud document analysis")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusChip(context.getString(R.string.local_analysis))
+            StatusChip(context.getString(R.string.no_cloud))
         }
-        Text("Letters in English are supported today. Translation languages are separate from scanning support.", style = MaterialTheme.typography.bodySmall)
+        Text(context.getString(R.string.english_support), style = MaterialTheme.typography.bodySmall)
+        if (firstRun) {
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text(context.getString(R.string.first_title)) },
+                text = { Text(context.getString(R.string.first_body), Modifier.verticalScroll(rememberScrollState())) },
+                confirmButton = { Button(onClick = { preferences.edit().putBoolean("seen", true).apply(); firstRun = false }) { Text(context.getString(R.string.get_started)) } }
+            )
+        }
         if (showInfo) {
             AlertDialog(
                 onDismissRequest = { showInfo = false },
-                title = { Text("Privacy and limitations") },
+                title = { Text(context.getString(R.string.privacy_title)) },
                 text = {
-                    Text("OCR, document analysis, and camera preprocessing run on this device. Translation models may download the first time you choose a language. No sender identity or document authenticity is verified. A lack of warning signals does not mean a document is safe. OCR supports bundled Latin-script recognition only.")
+                    Text(context.getString(R.string.privacy_body))
                 },
-                confirmButton = { Button(onClick = { showInfo = false }) { Text(" understood ") } }
+                confirmButton = { Button(onClick = { showInfo = false }) { Text(context.getString(R.string.understood)) } }
             )
         }
         if (uiState.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -247,7 +260,7 @@ internal fun PlainlyApp(context: Context) {
         pendingCameraPath?.let {
             Card {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Camera photo ready. Check the image before OCR.", style = MaterialTheme.typography.titleMedium)
+                    Text(context.getString(R.string.photo_ready), style = MaterialTheme.typography.titleMedium)
                     pendingCameraFile?.let { file ->
                         val preview by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, file.absolutePath, cameraRotation, cameraCropPercent) {
                             value = null
@@ -260,12 +273,12 @@ internal fun PlainlyApp(context: Context) {
                                 plainlyViewModel.setError(e.message ?: "Could not load preview")
                             }
                         }
-                        preview?.let { Image(it, contentDescription = "Captured document preview", modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth) }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { cameraRotation = (cameraRotation + 270) % 360 }) { Text("Rotate left") }
-                            OutlinedButton(onClick = { cameraRotation = (cameraRotation + 90) % 360 }) { Text("Rotate right") }
+                        preview?.let { Image(it, contentDescription = context.getString(R.string.photo_preview), modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth) }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { cameraRotation = (cameraRotation + 270) % 360 }) { Text(context.getString(R.string.rotate_left)) }
+                            OutlinedButton(onClick = { cameraRotation = (cameraRotation + 90) % 360 }) { Text(context.getString(R.string.rotate_right)) }
                         }
-                        Text("Crop edges: $cameraCropPercent%", style = MaterialTheme.typography.labelLarge)
+                        Text(context.getString(R.string.crop_edges, cameraCropPercent), style = MaterialTheme.typography.labelLarge)
                         Slider(
                             value = cameraCropPercent.toFloat(),
                             onValueChange = { cameraCropPercent = it.toInt().coerceIn(0, 20) },
@@ -273,25 +286,25 @@ internal fun PlainlyApp(context: Context) {
                             steps = 3
                         )
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = ::useCapturedPhoto, enabled = !uiState.busy && !preparingPhoto) { Text("Use photo") }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = ::useCapturedPhoto, enabled = !uiState.busy && !preparingPhoto) { Text(context.getString(R.string.use_photo)) }
                         OutlinedButton(onClick = {
                             pendingCameraFile?.delete()
                             pendingCameraPath = null
                             cameraRotation = 0
                             cameraCropPercent = 3
                             capture()
-                        }, enabled = !uiState.busy && !preparingPhoto) { Text("Retake") }
+                        }, enabled = !uiState.busy && !preparingPhoto) { Text(context.getString(R.string.retake)) }
                     }
                 }
             }
         }
         if (history.isNotEmpty()) {
-            ResultSection("Local history") {
-                OutlinedButton(onClick = { showClearHistory = true }) { Text("Clear all local history") }
+            ResultSection(context.getString(R.string.local_history)) {
+                OutlinedButton(onClick = { showClearHistory = true }) { Text(context.getString(R.string.clear_all)) }
                 history.take(10).forEach { entry ->
-                    Card { Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column(Modifier.weight(1f)) {
+                    Card { Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column {
                             Text(entry.displayName)
                             Text(entry.summary, style = MaterialTheme.typography.bodySmall)
                         }
@@ -301,12 +314,12 @@ internal fun PlainlyApp(context: Context) {
                                 putExtra(Intent.EXTRA_SUBJECT, entry.displayName)
                                 putExtra(Intent.EXTRA_TEXT, "${entry.displayName}\n\n${entry.summary}")
                             }
-                            context.startActivity(Intent.createChooser(share, "Export summary"))
-                        }) { Text("Export") }
+                            context.startActivity(Intent.createChooser(share, context.getString(R.string.export_summary)))
+                        }) { Text(context.getString(R.string.export)) }
                         OutlinedButton(onClick = {
                             releaseHistoryGrant(entry)
                             scope.launch { historyDao.delete(entry.id) }
-                        }) { Text("Delete") }
+                        }) { Text(context.getString(R.string.delete)) }
                     } }
                 }
             }
@@ -314,8 +327,8 @@ internal fun PlainlyApp(context: Context) {
         if (showClearHistory) {
             AlertDialog(
                 onDismissRequest = { showClearHistory = false },
-                title = { Text("Clear local history?") },
-                text = { Text("This removes saved names, source references, and summaries from this device. It does not delete the original files.") },
+                title = { Text(context.getString(R.string.clear_question)) },
+                text = { Text(context.getString(R.string.clear_body)) },
                 confirmButton = {
                     Button(onClick = {
                         scope.launch {
@@ -323,16 +336,16 @@ internal fun PlainlyApp(context: Context) {
                             historyDao.deleteAll()
                         }
                         showClearHistory = false
-                    }) { Text("Clear history") }
+                    }) { Text(context.getString(R.string.clear_history)) }
                 },
-                dismissButton = { OutlinedButton(onClick = { showClearHistory = false }) { Text("Cancel") } }
+                dismissButton = { OutlinedButton(onClick = { showClearHistory = false }) { Text(context.getString(R.string.cancel)) } }
             )
         }
         uiState.analysis?.let { result ->
             HorizontalDivider()
-            ModernSectionHeader("What we found", "Plain-language guidance first, source evidence always available")
+            ModernSectionHeader(context.getString(R.string.found), context.getString(R.string.source_guidance))
             OutlinedButton(onClick = plainlyViewModel::clearCurrentDocument, enabled = !uiState.busy) {
-                Text("Remove current document")
+                Text(context.getString(R.string.remove_document))
             }
             OutlinedButton(onClick = {
                 val share = Intent(Intent.ACTION_SEND).apply {
@@ -340,35 +353,35 @@ internal fun PlainlyApp(context: Context) {
                     putExtra(Intent.EXTRA_SUBJECT, "Plainly analysis")
                     putExtra(Intent.EXTRA_TEXT, analysisExportText(result))
                 }
-                context.startActivity(Intent.createChooser(share, "Export analysis"))
-            }) { Text("Export analysis") }
-            uiState.languageTag?.let { Text("Detected language: $it") }
+                context.startActivity(Intent.createChooser(share, context.getString(R.string.export_analysis)))
+            }) { Text(context.getString(R.string.export_analysis)) }
+            uiState.languageTag?.let { Text(context.getString(R.string.detected_language, it)) }
             uiState.languageWarning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             FraudWhyCard(result.riskLevel, result.findings)
             result.decisionSummary?.let { DecisionSummaryCard(it) }
             if (result.officialContacts.isNotEmpty()) {
-                ResultSection("Official contacts") {
-                    Text("Bundled directory matches a name in the letter. This does not verify its sender. Confirm that this agency serves you.")
+                ResultSection(context.getString(R.string.contacts)) {
+                    Text(context.getString(R.string.contacts_notice))
                     result.officialContacts.forEach { match ->
                         Card {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(match.contact.name, style = MaterialTheme.typography.titleMedium)
                                 Text(match.contact.purpose)
                                 Text(match.contact.phone)
-                                Text("Directory checked ${match.contact.checkedOn}", style = MaterialTheme.typography.bodySmall)
+                                Text(context.getString(R.string.directory_checked, match.contact.checkedOn), style = MaterialTheme.typography.bodySmall)
                                 OutlinedButton(onClick = {
                                     runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${match.contact.phone}"))) }
-                                        .onFailure { plainlyViewModel.setError("No phone app is available") }
-                                }) { Text("Open agency number in dialer") }
+                                        .onFailure { plainlyViewModel.setError(context.getString(R.string.no_phone)) }
+                                }) { Text(context.getString(R.string.dial_agency)) }
                                 OutlinedButton(onClick = {
                                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(match.contact.website))) }
-                                        .onFailure { plainlyViewModel.setError("No browser is available") }
-                                }) { Text("Open official website") }
+                                        .onFailure { plainlyViewModel.setError(context.getString(R.string.no_browser)) }
+                                }) { Text(context.getString(R.string.agency_website)) }
                                 OutlinedButton(onClick = {
                                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(match.contact.sourceUrl))) }
-                                        .onFailure { plainlyViewModel.setError("No browser is available") }
-                                }) { Text("Check directory source") }
-                                EvidenceCard("Agency-name match", "Page ${match.page}: ${match.evidence}")
+                                        .onFailure { plainlyViewModel.setError(context.getString(R.string.no_browser)) }
+                                }) { Text(context.getString(R.string.source_directory)) }
+                                EvidenceCard(context.getString(R.string.agency_match), "Page ${match.page}: ${match.evidence}")
                             }
                         }
                     }
@@ -376,7 +389,7 @@ internal fun PlainlyApp(context: Context) {
             }
             Box {
                 OutlinedButton(onClick = { languageMenu = true }, enabled = !uiState.busy) {
-                    Text("Change language · ${languageLabel(targetLanguage)}")
+                    Text(context.getString(R.string.change_language, languageLabel(targetLanguage)))
                 }
                 DropdownMenu(expanded = languageMenu, onDismissRequest = { languageMenu = false }) {
                     supportedLanguages.forEach { (code, label) ->
@@ -389,15 +402,15 @@ internal fun PlainlyApp(context: Context) {
                 }
             }
             uiState.translationStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            Text("Translation models download on first use. Check names, amounts, and dates against the original.", style = MaterialTheme.typography.bodySmall)
-            uiState.translated?.let { EvidenceCard("${languageLabel(uiState.translatedLanguage ?: targetLanguage)} summary", it) }
-            OutlinedButton(onClick = { plainlyViewModel.translateOriginal(targetLanguage) }, enabled = !uiState.busy) { Text("Translate full letter") }
+            Text(context.getString(R.string.translation_notice), style = MaterialTheme.typography.bodySmall)
+            uiState.translated?.let { EvidenceCard(context.getString(R.string.summary_language, languageLabel(uiState.translatedLanguage ?: targetLanguage)), it) }
+            OutlinedButton(onClick = { plainlyViewModel.translateOriginal(targetLanguage) }, enabled = !uiState.busy) { Text(context.getString(R.string.translate_letter)) }
             uiState.translatedOriginal?.let {
                 TranslationComparison(uiState.lines.joinToString("\n") { line -> "[Page ${line.page}] ${line.text}" }, it,
                     languageLabel(uiState.originalTranslationLanguage ?: targetLanguage))
             }
             OutlinedButton(onClick = { showDetails = !showDetails }) {
-                Text(if (showDetails) "Hide source & details" else "Review source & details")
+                Text(if (showDetails) context.getString(R.string.hide_details) else context.getString(R.string.show_details))
             }
             speechError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             SpeechControls(
@@ -409,7 +422,7 @@ internal fun PlainlyApp(context: Context) {
                         val locale = Locale.forLanguageTag(if (language == "tl") "fil" else language)
                         val voice = tts.voices?.firstOrNull { !it.isNetworkConnectionRequired && (it.locale.language == locale.language || it.locale.language == language) }
                         if (voice == null) {
-                            speechError = "No offline voice installed for ${languageLabel(language)}. Install a voice in Android text-to-speech settings."
+                            speechError = context.getString(R.string.missing_voice, languageLabel(language))
                         } else {
                             tts.voice = voice
                             speechError = null
@@ -419,7 +432,7 @@ internal fun PlainlyApp(context: Context) {
                             speechBase = 0
                             speechPaused = false
                             speaking = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "plainly-summary") == TextToSpeech.SUCCESS
-                            if (!speaking) speechError = "Could not start speech. Check Android text-to-speech settings."
+                            if (!speaking) speechError = context.getString(R.string.speech_failed)
                         }
                     },
                     onPause = { tts.stop(); speaking = false; speechPaused = true },
@@ -444,18 +457,18 @@ internal fun PlainlyApp(context: Context) {
                 )
             if (showDetails) {
                 ReviewWarning()
-                ResultSection("Actions and deadlines") {
+                ResultSection(context.getString(R.string.actions_dates)) {
                     result.actions.take(3).forEach { ActionCard(it) }
                     result.deadlines.forEach { deadline -> DeadlineCard(deadline) { calendarConfirmation = it } }
-                    if (result.actions.isEmpty() && result.deadlines.isEmpty()) Text("No clear action or response deadline detected.")
+                    if (result.actions.isEmpty() && result.deadlines.isEmpty()) Text(context.getString(R.string.no_actions))
                 }
-                ResultSection("Warning evidence") {
+                ResultSection(context.getString(R.string.warning_evidence)) {
                     result.findings.forEach { finding ->
                         EvidenceCard("${finding.label} — why to pause", "${riskExplanation(finding.label)}\n\nEvidence: ${finding.evidence}\nSource spans: ${finding.sourceSpanIds.joinToString()}")
                     }
-                    if (result.findings.isEmpty()) Text("No matching warning phrases were found.")
+                    if (result.findings.isEmpty()) Text(context.getString(R.string.no_phrases))
                 }
-                ResultSection("Extracted original text") {
+                ResultSection(context.getString(R.string.original_text)) {
                     uiState.lines.groupBy { it.page }.toSortedMap().forEach { (page, pageLines) -> SourcePageCard(page, pageLines.map { it.text }) }
                 }
             }
@@ -463,9 +476,9 @@ internal fun PlainlyApp(context: Context) {
         calendarConfirmation?.let { deadline ->
             AlertDialog(
                 onDismissRequest = { calendarConfirmation = null },
-                title = { Text("Confirm this date") },
+                title = { Text(context.getString(R.string.confirm_date)) },
                 text = {
-                    Text("Plainly detected ${deadline.date}${if (deadline.isCalculatedFromReferenceDate) " as a calculation from the analysis date" else ""}${if (deadline.needsReview) " and marked it for review" else ""}. Check the original document before adding it to your calendar.\n\n${deadline.reviewReason.orEmpty()}\n${deadline.evidence}")
+                    Text(context.getString(R.string.confirm_date_body, deadline.date.toString(), (if (deadline.isCalculatedFromReferenceDate) "Calculated from the analysis date; confirm the reference date. " else "") + deadline.reviewReason.orEmpty(), deadline.evidence))
                 },
                 confirmButton = {
                     Button(onClick = {
@@ -478,11 +491,11 @@ internal fun PlainlyApp(context: Context) {
                                 putExtra(CalendarContract.Events.TITLE, "Review Plainly document deadline")
                                 putExtra(CalendarContract.Events.DESCRIPTION, "Possible deadline detected by Plainly. Confirmed by user; still check the original document.\n${deadline.reviewReason.orEmpty()}\n${deadline.evidence}")
                             }
-                            runCatching { context.startActivity(intent) }.onFailure { plainlyViewModel.setError("No calendar app is available") }
+                            runCatching { context.startActivity(intent) }.onFailure { plainlyViewModel.setError(context.getString(R.string.no_calendar)) }
                         }
-                    }) { Text("Confirm and open calendar") }
+                    }) { Text(context.getString(R.string.open_calendar)) }
                 },
-                dismissButton = { OutlinedButton(onClick = { calendarConfirmation = null }) { Text("Cancel") } }
+                dismissButton = { OutlinedButton(onClick = { calendarConfirmation = null }) { Text(context.getString(R.string.cancel)) } }
             )
         }
     }
