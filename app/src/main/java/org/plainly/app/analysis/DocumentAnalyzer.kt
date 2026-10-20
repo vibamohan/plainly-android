@@ -46,7 +46,8 @@ data class Analysis(
     val intents: Set<IntentKind> = emptySet(), val evidence: List<GraphEvidence> = emptyList(), val relations: List<EvidenceRelation> = emptyList(),
     val riskLevel: RiskLevel = RiskLevel.NO_CLEAR_INDICATORS, val warnings: List<String> = emptyList(), val summaryItems: List<SummaryItem> = emptyList(),
     val issueDates: List<IssueDate> = emptyList(),
-    val decisionSummary: DecisionSummary? = null
+    val decisionSummary: DecisionSummary? = null,
+    val officialContacts: List<ContactMatch> = emptyList()
 )
 
 /** Conservative, deterministic analysis. Scores are heuristics, NOT fraud probabilities. */
@@ -200,7 +201,7 @@ object DocumentAnalyzer {
             .map { SummaryItem(it.value, it.sourceSpanIds) }
         val decisionSummary = buildDecisionSummary(sorted, deadlines, issueDates, unique, riskLevel, graph.intents, warnings, graph.evidence.filter { it.kind == EvidenceKind.AMOUNT }.map { it.value })
         val summary = decisionSummary.toCompactText().ifBlank { fallbackSummary }
-        return Analysis(sorted, deadlines.distinctBy { it.date to it.evidence }, unique, score, summary, graph.intents, graph.evidence, graph.relations, riskLevel, warnings, summaryItems, issueDates.distinctBy { it.date to it.evidence }, decisionSummary)
+        return Analysis(sorted, deadlines.distinctBy { it.date to it.evidence }, unique, score, summary, graph.intents, graph.evidence, graph.relations, riskLevel, warnings, summaryItems, issueDates.distinctBy { it.date to it.evidence }, decisionSummary, OfficialContacts.match(lines))
     }
 
     private fun buildDecisionSummary(
