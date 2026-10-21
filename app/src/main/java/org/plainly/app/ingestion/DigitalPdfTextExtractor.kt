@@ -1,6 +1,7 @@
 package org.plainly.app.ingestion
 
 import android.content.Context
+import kotlinx.coroutines.ensureActive
 import android.net.Uri
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -11,19 +12,22 @@ import org.plainly.app.analysis.TextEvidence
 
 /** Extracts selectable PDF text. Empty output means callers should use scanned-page OCR. */
 object DigitalPdfTextExtractor {
-    suspend fun extract(context: Context, uri: Uri): List<TextEvidence> {
+    suspend fun extract(context: Context, uri: Uri, onProgress: (Int, Int) -> Unit = { _, _ -> }): List<TextEvidence> {
         PDFBoxResourceLoader.init(context.applicationContext)
         val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open PDF")
         input.use { stream ->
             PDDocument.load(stream).use { document ->
+                require(document.numberOfPages <= 20) { "PDF has ${document.numberOfPages} pages. Choose a document of 20 pages or fewer; no pages were analyzed." }
                 if (document.numberOfPages == 0) return emptyList()
                 return (1..document.numberOfPages).flatMap { page ->
+                    onProgress(page, document.numberOfPages)
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     val stripper = PositionedTextStripper().apply {
                         startPage = page
                         endPage = page
                     }
                     stripper.getText(document)
-                    if (stripper.lines.isEmpty()) normalizePageText(stripper.rawText, page)
+                    if (stripper.lines.isEmpty()) normalizePageText(stripper.rawText.toString(), page)
                     else stripper.lines.map { (text, box) -> TextEvidence(text, page, box.height, box = box) }
                 }
             }
@@ -39,11 +43,10 @@ object DigitalPdfTextExtractor {
 
     private class PositionedTextStripper : PDFTextStripper() {
         val lines = mutableListOf<Pair<String, BoundingBox>>()
-        var rawText: String = ""
-            private set
+        val rawText = StringBuilder()
 
         override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
-            rawText += text + "\n"
+            rawText.append(text).append('\n')
             val positions = textPositions.filter { it.unicode.isNotEmpty() }
             if (positions.isEmpty()) return
             val left = positions.minOf { it.xDirAdj }.toInt()
