@@ -32,6 +32,24 @@ This model is not integrated into the Android app. The split is still derived fr
 
 The project does not currently report device latency, peak memory, translation adequacy, OCR accuracy, evidence span recall, or calibration. Those require a labeled, consent-safe corpus and measurements on actual Android hardware.
 
+## Synthetic benefits-notice behavior check — 2026-10-21
+
+`BenefitsNoticeEvaluationTest.kt` is a fixed, hand-authored set of 30 fictional one-snippet examples: 15 routine notices and 15 scam-like requests, covering Medi-Cal/CalFresh renewals, school and utility notices, IRS/SSA language, credentials, gift cards, cryptocurrency, wire transfers, personal data, remote access, links, and threats. No real person's letter is included. Treat any nonzero analyzer score as a review signal (not a fraud verdict). On this fixture the current deterministic analyzer produced TP=15, FP=0, FN=0, TN=15 (30/30 accuracy, 1.00 precision, 1.00 recall). This is a regression check against these exact authored phrases, not an estimate of performance on new, real, OCR-processed, translated, or adversarial letters; the examples are small, synthetic, and may overlap known rule wording. It says nothing about MobileBERT, which remains untrained/unvalidated in this experiment.
+
+The same fixture was also scored by the public MobileBERT checkpoint and its 1-epoch fine-tune on the phishing-email corpus. Each model's threshold was independently selected on the public email validation split to meet a 5% maximum false-positive rate, then applied unchanged to the synthetic benefits fixture:
+
+| System | TP | FP | FN | TN | Accuracy | Precision | Recall |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| MobileBERT checkpoint | 15 | 4 | 0 | 11 | 0.867 | 0.789 | 1.000 |
+| Email fine-tune (1 epoch) | 15 | 7 | 0 | 8 | 0.767 | 0.682 | 1.000 |
+| Plainly deterministic rules (`score > 0`) | 15 | 0 | 0 | 15 | 1.000 | 1.000 | 1.000 |
+
+This comparison is exploratory and out-of-domain: 30 hand-authored snippets are not a representative or independent benefits-letter test corpus. The 100% rule result is specifically susceptible to wording/selection bias because the examples were written to exercise known rules. The email fine-tune has more false alarms than its checkpoint on this fixture, so it does not support replacing or promoting the existing rules. Do not call these numbers real-world benefits-letter accuracy.
+
+## Adjacent-sentence benefits interruption rule — 2026-10-21
+
+A focused regression set was added for two synthetic multi-sentence cases: an urgent CalFresh suspension followed by a link instruction, and an urgent coverage termination followed by a verification-code request. The rule produced a warning for both (2/2) and did not warn on one synthetic routine renewal deadline plus county-contact sentence (0/1 false warnings). The pre-change implementation did not produce these specific combined-context findings. These three hand-written examples are a targeted behavior check, not a representative evaluation and not evidence of general performance improvement. The rule adds a 25-point review signal with both source sentences attached; it does not alter the Naive Bayes model or turn the score into a probability.
+
 Required future evaluation:
 
 - Separate templates/documents between development and evaluation.

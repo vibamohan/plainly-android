@@ -67,6 +67,9 @@ object DocumentAnalyzer {
         Triple("Remote access or software installation request", Regex("\\b(remote access|screen share|install (?:this|the) software|download (?:this|the) app)\\b", RegexOption.IGNORE_CASE), 20),
         Triple("Urgent pressure", Regex("\\b(act today|within 24 hours|last chance|final notice)\\b", RegexOption.IGNORE_CASE), 10)
     )
+    private val accountThreat = Regex("\\b(account|benefits?|coverage|case|application|claim)\\b.{0,55}\\b(suspend(?:ed|sion)?|terminat(?:e|ed|ion)|close[sd]?|cancel(?:led|ed)?|lose|stop)\\b|\\b(suspend(?:ed|sion)?|terminat(?:e|ed|ion)|close[sd]?|cancel(?:led|ed)?|lose|stop)\\b.{0,55}\\b(account|benefits?|coverage|case|application|claim)\\b", RegexOption.IGNORE_CASE)
+    private val highPressure = Regex("\\b(immediately|within \\d+ hours?|today|final notice|last chance|act now)\\b", RegexOption.IGNORE_CASE)
+    private val linkOrChannel = Regex("\\b(click|open|visit|call|text|reply|follow|use)\\b.{0,60}\\b(link|website|number|phone|account|portal|here)\\b|\\b(link|website|number|phone|account|portal)\\b.{0,60}\\b(click|open|visit|call|text|reply|follow|use)\\b", RegexOption.IGNORE_CASE)
 
     fun analyze(
         lines: List<TextEvidence>,
@@ -83,11 +86,13 @@ object DocumentAnalyzer {
             pattern.findAll(text).any { !isNegated(text, it.range.first) }
         val medianHeight = lines.map { it.height }.filter { it > 0 }.sorted().let { if (it.isEmpty()) 0 else it[it.size / 2] }
         val sentences = reconstructSentences(lines)
+        val sentenceWarnings = mutableListOf<Pair<String, List<TextEvidence>>>()
         sentences.forEachIndexed { sentenceIndex, sentence ->
             val line = sentence.first()
             val text = sentenceText(sentence)
             val sourceSpanIds = sentence.mapIndexed { index, item -> "span-${item.page}-$sentenceIndex-$index" }
             if (text.isBlank()) return@forEachIndexed
+            sentenceWarnings += text to sentence
             if (actionWords.containsMatchIn(text)) {
                 // Layout affects ranking only; never whether a fact or risk signal is true.
                 val emphasis = (if (line.allCaps) 0.15 else 0.0) + (if (medianHeight > 0 && line.height > medianHeight * 1.3) 0.25 else 0.0)
@@ -145,6 +150,27 @@ object DocumentAnalyzer {
             val payment = containsNonNegated(text, paymentPattern)
             val threat = containsNonNegated(text, threatPattern)
             if (payment && threat) findings += Finding("Payment request combined with threat", evidence(sentence), 20, sourceSpanIds)
+        }
+        // Context across adjacent sentences catches common pressure tactics while keeping
+        // each finding tied to the two source sentences that support it.
+        sentenceWarnings.zipWithNext().forEachIndexed { index, (first, second) ->
+            val combined = "${first.first} ${second.first}"
+            val left = first.first
+            val right = second.first
+            val spans = (first.second.mapIndexed { offset, item -> "span-${item.page}-$index-$offset" } +
+                second.second.mapIndexed { offset, item -> "span-${item.page}-${index + 1}-$offset" }).distinct()
+            val evidence = (first.second + second.second).joinToString(" ") { evidence(listOf(it)) }
+            val hasAccountThreat = accountThreat.containsMatchIn(combined) &&
+                !isNegated(combined, accountThreat.find(combined)!!.range.first)
+            val hasUrgency = containsNonNegated(combined, highPressure)
+            val hasChannel = containsNonNegated(combined, linkOrChannel)
+            val hasCredential = containsNonNegated(combined, Regex("\\b(password|verification code|one.time code|PIN)\\b", RegexOption.IGNORE_CASE))
+            val hasPayment = containsNonNegated(combined, Regex("\\b(payment|pay|fee|gift\\s*cards?|bitcoin|crypto|wire transfer)\\b", RegexOption.IGNORE_CASE))
+            if (hasAccountThreat && hasUrgency && hasChannel) {
+                findings += Finding("Urgent account or benefits interruption with contact direction", evidence, 25, spans)
+            } else if (hasAccountThreat && hasUrgency && (hasCredential || hasPayment)) {
+                findings += Finding("Urgent account or benefits interruption with sensitive request", evidence, 25, spans)
+            }
         }
         sentences.zipWithNext().forEachIndexed { index, pair ->
             val firstText = sentenceText(pair.first)
