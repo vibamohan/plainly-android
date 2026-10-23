@@ -1,14 +1,9 @@
-# Model and rules card
+# Model and rules
 
-Plainly ships bundled Latin-script ML Kit OCR, deterministic Kotlin rules, and an optional offline word/bigram Naive Bayes warning model trained from the documented external corpus. It does not ship a LiteRT model or generative summarizer.
+Plainly uses bundled Latin-script ML Kit OCR, deterministic Kotlin analysis rules, and a small bundled word/bigram Naive Bayes model. It does not include a LiteRT model or generative document analysis.
 
-The warning score is a capped sum of explainable phrase signals. It is not a probability and does not verify safety, fraud, sender identity, or authenticity. Evidence graph relations are document-level textual claims inferred by proximity; they are not proof of causation.
+The rules and model can highlight text for review. Their scores are not probabilities and do not establish that a document is fraudulent, authentic, or safe. Evidence links point to extracted text; inferred relationships describe nearby wording, not verified facts.
 
-The learned model contributes one source-linked review signal when its binary classifier predicts the warning class. It exposes no probability or authenticity decision, and the rule-based signals remain available as separate evidence.
+The Naive Bayes model was developed from email and message data. It produced false warnings on benign school examples, so its output cannot create or increase the app's warning level. When deterministic rules have already found a warning, the model may show an experimental explanation with words that contributed to its score. This is not validation on photographed letters.
 
-Action importance labels are review-priority hints based partly on extracted layout. They are not OCR confidence scores or factual certainty.
-
-Translation uses ML Kit on-device models and may require an explicit first-use download. Supported target choices exposed by the current UI are English, Spanish, French, German, and Portuguese; translation quality and offline behavior require real-device evaluation.
-
-## Letter-domain safeguard (2026-10-19)
-The bundled email/SMS model predicts a warning for the three benign school examples in the final-week review. Its output therefore no longer creates or raises the user-facing warning level. It can add a zero-weight, explicitly experimental explanation only when deterministic rules already matched. The explanation lists up to five positive word/bigram log-likelihood contributions present in the input; these are statistical associations, not authenticity evidence. Regression tests load the actual bundled TSV. Historical benchmark numbers below/above describe the earlier model evaluation, not this gated product behavior or photographed-letter performance.
+Translation uses ML Kit models on the device and may require a first-use download. Translation quality and offline behavior have not been evaluated across supported languages and devices.

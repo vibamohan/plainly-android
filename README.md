@@ -1,43 +1,36 @@
-# Plainly — offline-first Android document assistant
+# Plainly
 
-A native Kotlin / Jetpack Compose prototype for understanding printed letters without uploading them to a generative AI service.
+Plainly is an Android app that helps people review letters. It extracts text on the device, summarizes possible actions and dates, and highlights phrases that may deserve a closer look. It does not verify who sent a letter or whether a letter is legitimate.
 
-## Implemented
-- Android system document picker for photos and PDFs (no storage permission).
-- Plain-text-like files (`.txt`, `.md`, `.csv`, `.json`, `.xml`, and HTML) are accepted for deterministic local demos and are mapped to page-one source spans.
-- Read-only URI permission is persisted when the provider supports it; the document is not copied into app storage.
-- Bundled ML Kit Latin OCR for images and scanned PDF pages, using Android PdfRenderer one page at a time.
-- Explicit OCR language selection for tested Latin-script documents (English, Spanish, French, German, and Portuguese); non-Latin OCR packs are not bundled.
-- Camera preprocessing corrects EXIF orientation and lets the user rotate and crop edge margins before OCR.
-- Page-linked extracted text with line and word bounding boxes, sentence reconstruction, and geometry-based column ordering.
-- Rule-based action and deadline extraction (English month names, US numeric dates, and unambiguous ISO dates).
-- Explainable warning phrase scoring; no safety guarantees.
-- ML Kit on-device translation with English, Spanish, French, German, and Portuguese targets; detected source language is used when supported (the selected model may download on first use).
-- Original extracted text remains visible beside the translated text for direct comparison.
-- On-device speech controls support pause, resume, and replay; availability depends on the Android TTS engine.
-- Pure Kotlin analysis tests.
+## What it does
 
-## Known limitations
-- Trained LiteRT/TFLite intent classifier; a generic model without a trained head is NOT useful.
-- Reliable bold/italic/underline recognition; OCR does not provide this directly.
-- Non-Latin OCR is not configured; translation targets are separate from OCR language support.
-- Relative dates are calculated from the analysis reference date and marked for review.
-- Selectable PDF text is extracted locally with PDFBox and approximate line boxes; image-only/scanned PDFs fall back to bounded page rendering and OCR.
-- On-device language identification is best-effort and displays a warning when confidence is low; it does not expand the bundled Latin OCR model's script support.
+- Opens photos, PDFs, and common text files through Android's document picker.
+- Reads images and scanned PDF pages with bundled Latin-script ML Kit OCR. Selectable PDF text is extracted locally.
+- Lets the user take, rotate, and crop a camera image before processing.
+- Shows extracted text and source-linked evidence alongside possible actions, dates, and warning indicators.
+- Offers on-device translation and text-to-speech. Translation models may download the first time they are used.
+- Keeps optional history to document metadata and a short summary. Imported document bytes are not copied into app storage.
 
-## Run
-1. Install Android Studio with Android SDK 35 and JDK 17.
-2. Open this folder and let Android Studio sync Gradle dependencies.
-3. Run the `app` configuration on an Android device (API 26+) or install `app/build/outputs/apk/debug/app-debug.apk` with `adb install -r`.
-4. Select an English-language photo or PDF from the system picker.
-5. Run unit tests: `./gradlew testDebugUnitTest`; with an emulator/device connected, run `./gradlew connectedDebugAndroidTest` for the activity launch test.
+## Build and run
 
-For automated verification, run `./scripts/verify.sh`. For device behavior, run `./scripts/run-device-smoke-test.sh` with an authorized emulator or phone connected through `adb`.
+Requirements: Android Studio, Android SDK 35, and JDK 17. The app supports Android 8.0 (API 26) and later.
 
-The Room history stores only user-selected document metadata and a short summary; it does not copy document content.
+Open the project in Android Studio, sync Gradle, and run the `app` configuration on a device or emulator. To build from a terminal:
 
-## Privacy limitations
-OCR is bundled and document analysis is local. Translation downloads a model and may make network requests for model acquisition; Internet access is declared for that purpose. This app does not itself upload letter content, but verify SDK telemetry and network behavior before making absolute privacy claims. Room history contains metadata only; imported content is processed in memory and is not copied by Plainly.
+```sh
+./gradlew assembleDebug
+```
 
-## Accuracy limitations
-This is a constrained prototype, not legal, immigration, financial, or fraud-verification advice. Numeric dates assume US month/day ordering and are flagged for review. Missing years are assumed for display and flagged for confirmation. Column ordering is heuristic and can fail on unusual layouts, rotated pages, or mixed columns.
+To run unit tests and Android lint:
+
+```sh
+./gradlew testDebugUnitTest lintDebug
+```
+
+`./scripts/verify.sh` runs those checks with a debug build and runs instrumentation tests when an Android target is connected. `./scripts/run-device-smoke-test.sh` installs and launches the app on a connected target.
+
+## Limits
+
+Plainly is a prototype, not legal, immigration, financial, or fraud-verification advice. A warning score is not a fraud probability, and no warning does not mean a document is safe. Dates and extracted text should be checked against the original; numeric dates use US month/day ordering and may be marked for review. Reading order and PDF text positions can be approximate. OCR currently supports Latin script. Translation quality and offline behavior depend on the installed models and Android device.
+
+Document OCR and analysis run locally. Internet access is used by ML Kit to acquire optional translation models. Review [privacy details](docs/PRIVACY.md), [evaluation limits](docs/EVALUATION.md), and [AI assistance disclosure](AI-USAGE.md).

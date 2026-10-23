@@ -1,6 +1,6 @@
 # Bundled contact directory
 
-Codex checked these official sources on 2026-10-19. Viba has not been recorded as personally verifying them. Before submission, open each source and verify its purpose and number. Directory matches do not establish sender authenticity or benefit eligibility. Calling uses the dialer; websites open only after a user action. No letter text is sent with these actions.
+Check the linked official source before relying on a number or purpose. A directory match does not establish the sender's identity or benefit eligibility. Calls open in the dialer, and websites open only after the user selects them. Plainly does not send letter text with these actions.
 
 | Contact | Number | Source and scope |
 |---|---|---|
@@ -12,4 +12,4 @@ Codex checked these official sources on 2026-10-19. Viba has not been recorded a
 | Mountain View Whisman | 650-526-3552 | [California Department of Education](https://www.cde.ca.gov/sdprofile/details.aspx?cds=43695910000000), state-listed district contact |
 | Mountain View–Los Altos | 650-940-4650 | [NCES](https://nces.ed.gov/ccd/districtsearch/district_detail.asp?ID2=0626310&details=5), district main office |
 
-School districts use their own .org/.net sites; their numbers above come from government education directories. MVWSD's own homepage lists a different general line (650-526-3500); the app explicitly labels 650-526-3552 as the CDE-listed contact. No generic “school district” phrase is mapped to a particular district. Recheck stale entries before releases.
+School districts use their own .org/.net sites; the numbers above come from government education directories. MVWSD's own homepage lists a different general line (650-526-3500); the app labels 650-526-3552 as the CDE-listed contact. Plainly does not map a generic “school district” phrase to a specific district. Recheck the directory before each release.
